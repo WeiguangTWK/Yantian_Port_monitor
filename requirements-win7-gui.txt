@@ -1,0 +1,19 @@
+# Win7 GUI 依赖（Python 3.8）
+#
+# 为什么不是 PySide6：
+#   Qt 6 官方只支持 Windows 10 (1809+) / Windows 11，不支持 Win7。
+#   PySide2 = Qt 5.15，支持 Win7。
+#   PySide2-Fluent-Widgets 与 PySide6 版是同一作者、同一套 API，
+#   所以 gui/app.py 只需改 import，界面代码不用重写。
+#
+# 安装：
+#   python -m pip install -r requirements-win7-gui.txt
+#
+# ⚠️ 许可证：PySide2-Fluent-Widgets 是 GPLv3（商业用途需购买授权），
+#    与 PySide6 版一致。详见 docs/GUI-技术选型与基座.md。
+#
+# ⚠️ 不要与 PyQt-Fluent-Widgets / PyQt6-… / PySide6-… 同时安装，
+#    它们的模块名都是 qfluentwidgets。
+
+PySide2==5.15.2.1
+PySide2-Fluent-Widgets>=1.11.3

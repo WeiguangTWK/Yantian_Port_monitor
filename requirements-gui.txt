@@ -1,0 +1,14 @@
+# GUI 依赖（可选，仅当需要图形界面时安装）
+#
+# ⚠️ 许可证提醒：PySide6-Fluent-Widgets 是 GPLv3（商业用途需购买授权）。
+#    详见 docs/GUI-技术选型与基座.md。
+#
+# ⚠️ 不要与 PyQt-Fluent-Widgets / PyQt6-… / PySide2-… 同时安装，
+#    它们的模块名都是 qfluentwidgets，会互相覆盖。
+#
+# 安装：
+#   pip install -r requirements-gui.txt
+#   需要 Mica/Acrylic 材质效果再加 [full]：
+#   pip install "PySide6-Fluent-Widgets[full]"
+
+PySide6-Fluent-Widgets>=1.11.3

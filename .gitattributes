@@ -1,0 +1,7 @@
+# 统一行尾：仓库里存 LF，检出也用 LF。
+#
+# 为什么显式规定：本仓库全部是 .py / .md / .json / .txt / .html，本身都是 LF。
+# 不规定的话，Git 在中文 Windows 上默认 core.autocrlf=true 会把它们检出成 CRLF，
+# 于是每检出一份工作区就"所有文件都被改动"，diff 全是噪音；
+# 而且 tools/make_bundle.py 是按工作区字节打包的，行尾一变交付包内容也跟着变。
+* text=auto eol=lf

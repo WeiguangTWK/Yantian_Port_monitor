@@ -1,0 +1,90 @@
+{
+  "_怎么用": [
+    "1) 把这个文件复制成 watchlist.json",
+    "2) 只改 targets（要盯的船/码头航次）",
+    "3) 跑 python run_monitor.py --test-alert  验证告警能弹出来",
+    "4) 跑 python run_monitor.py --watch 1800  开始监控",
+    "其余所有字段都有默认值，不写也能跑。"
+  ],
+
+  "targets": [
+    { "type": "ship",   "value": "MSC IRINA", "label": "MSC IRINA" },
+    { "type": "voyage", "value": "GJ634W",    "label": "GJ634W" }
+  ],
+
+  "_targets说明": [
+    "type=ship   按船名查（子串匹配，所以船名要写完整，别只写 EVER）",
+    "type=voyage 按码头航次查（精确匹配）",
+    "label 只是显示用，可以不写（默认用 value）",
+    "不想监控某一条时，加 \"enabled\": false 而不是删掉它"
+  ],
+
+  "notify": [
+    { "kind": "windows", "label": "系统通知" }
+  ],
+
+  "_notify说明": [
+    "只用系统通知的话，上面这行就够了 —— kind 是唯一必填字段。",
+    "",
+    "要加别的通道，就往数组里再塞一个对象：",
+    "  { \"kind\": \"dingtalk\", \"url\": \"https://oapi.dingtalk.com/robot/send?access_token=...\", \"secret\": \"SEC...\" }",
+    "  { \"kind\": \"wecom\",    \"url\": \"https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=...\" }",
+    "  { \"kind\": \"feishu\",   \"url\": \"https://open.feishu.cn/open-apis/bot/v2/hook/...\", \"secret\": \"...\" }",
+    "  { \"kind\": \"webhook\",  \"url\": \"https://你的服务/ytmon\" }",
+    "  { \"kind\": \"email\",    \"smtp_host\": \"smtp.example.com\", \"smtp_port\": 465,",
+    "                            \"smtp_user\": \"user@example.com\", \"smtp_password\": \"授权码\",",
+    "                            \"mail_from\": \"user@example.com\", \"mail_to\": [\"ops@example.com\"] }",
+    "",
+    "两条关于系统通知的硬限制（Windows 的设计，绕不过去）：",
+    "  · 必须有一个**已登录的交互式桌面会话**。计划任务勾了",
+    "    '不管用户是否登录' → 进程在会话 0 → 弹不出来。",
+    "  · 没人看着屏幕就等于没通知。",
+    "  所以无人值守的场景，请再加一个 email 或 webhook 通道兜底 ——",
+    "  否则你会以为告警配好了，直到真出事那天才发现从来没收到过。",
+    "  气泡停留时长用 \"hold_seconds\" 调（默认 5 秒）。",
+    "",
+    "凭证都写在这个文件里。它已被 .gitignore 忽略、打包脚本也整个排除，不会外泄。"
+  ],
+
+  "_settings说明": [
+    "下面这些**全都可不写**。列出来只是让你知道有这些旋钮。每一项的详细理由见 README。",
+    "",
+    "etb_back_days      查询起始日 = 今天 - N 天（站点只发布约 1 个月，调大没用）",
+    "edge_path          浏览器 exe 的完整路径；null = 自动查找。Win7 上通常要显式指定",
+    "headless           默认 true（无头）。出问题时设 false 能看见窗口里发生了什么",
+    "",
+    "precheck           默认 false。开着它每轮多发一次 GET，而实测那次 GET 恒报",
+    "                   expired、信息量为零 —— 除非排障，否则别开",
+    "retry_attempts     被限流（HTTP 567/429/503）时退避重试几次，默认 2",
+    "watch_jitter_seconds  循环监控每轮的随机等待上限，默认 30 秒（避免规律流量）",
+    "",
+    "alert_on           哪些情况告警，默认 [\"changed\",\"missing\",\"error\"]",
+    "                   （不含 first —— 首次只是建立基线，不该半夜叫人）",
+    "alert_error_after  查询要连续失败几轮才告警，默认 2（站点偶发抖动，别一惊一乍）",
+    "",
+    "stale_after_hours  距上次成功多久算'停摆'并告警，默认 6 小时（0 = 关）",
+    "                   能报'中途断过 4 小时'，但**报不了'再也没跑过'**",
+    "heartbeat_hours    多久发一条'我还活着'，默认 24 小时（0 = 关）",
+    "heartbeat_url      每轮 ping 的外部地址（如 https://hc-ping.com/<uuid>）",
+    "                   **只有它能发现'监控再也没跑过'** —— 本地检测在进程",
+    "                   根本没起来时是无声的。想真正兜住'监控死了'，配这个。"
+  ],
+
+  "settings": {
+    "etb_back_days": 7,
+    "edge_path": null,
+    "headless": true,
+
+    "precheck": false,
+    "retry_attempts": 2,
+    "watch_jitter_seconds": 30.0,
+
+    "alert_on": ["changed", "missing", "error"],
+    "alert_error_after": 2,
+    "alert_cooldown_seconds": 3600,
+
+    "stale_after_hours": 6.0,
+    "heartbeat_hours": 24.0,
+    "heartbeat_url": ""
+  }
+}

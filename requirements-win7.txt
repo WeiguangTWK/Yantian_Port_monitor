@@ -1,0 +1,19 @@
+# Win7 运行时依赖（Python 3.8）
+#
+# Win7 上能用的最后一个 Python 是 3.8.10（官方安装包版本号就到 .10）。
+# 这份清单把版本**锁到仍然支持 Python 3.8 的最后一档**，避免 pip 装上要求 3.9+ 的新版。
+#
+# 安装：
+#   python -m pip install -r requirements-win7.txt
+#
+# 注意：本文件不含 GUI 依赖。GUI 用 PySide2 系，见 requirements-win7-gui.txt。
+
+# HTTP 客户端（查询主路径）
+requests>=2.28,<2.33
+
+# CDP 驱动浏览器（仅 cookie 引导时用）
+# aiohttp 3.10+ 要求 Python >=3.9，所以卡在 3.9.x
+aiohttp>=3.8,<3.10
+
+# aiohttp 在 Python <3.11 上需要这个
+async-timeout>=4.0,<5.0

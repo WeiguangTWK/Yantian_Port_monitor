@@ -1,0 +1,35 @@
+# 侦察/临时产物（含令牌，绝不入库）
+.recon/
+
+# 凭证
+token.txt
+*.token
+.env
+# watchlist.json 是个人配置，--write 会把 token 写进去；模板见 watchlist.example.json
+watchlist.json
+
+# cookie 缓存（含 EO-Bot-Js-Token）
+.cache/
+
+# 运行时状态与浏览器档案
+# .browser_profile 里有 WAF 凭证 EO-Bot-Js-Token，绝不能提交
+state/
+.browser_profile/
+snapshots/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# 运行产物
+data/
+logs/
+*.log
+
+# 打包产物（tools/make_bundle.py 生成，可重现）
+dist/
+
+# 本地临时目录（测试与探测用）
+.tmp/

@@ -1,0 +1,520 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<html>
+
+<head>
+<title>船期公众查询</title>
+<script src="../resources/js/function.js"></script>
+<script type="text/javascript">
+	var navID = '2';
+	function submitForm(){
+		form1.submit();
+	}
+	String.prototype.trim = function() { return this.replace(/(^\s*)|(\s*$)/g, ""); }
+	function dd(){
+		var _ship_name = form1.ship_name.value;
+		var _voyage_code = form1.voyage_code.value;
+		var _etb_time = form1.etb_time.value;
+		if(_etb_time == ""){
+			alert("起始时间不为空");
+			return false;
+		} else if(_ship_name.trim() == "" && _voyage_code.trim() == "") {
+			alert("请输入码头航次或船名进行查询");
+			return false;
+		}else if(_ship_name.trim() != "" && _ship_name.trim().length<3){
+			alert("船名需至少输入3个字符");
+			return false;
+		}else if(_voyage_code.trim() != "" && _voyage_code.trim().length<2){
+			alert("码头航次需至少输入2个字符");
+			return false;
+		}
+		return true;
+	}
+
+	function ddPage(pageCurrent,a,b,c){
+		form1.pageCurrent.value=pageCurrent;
+		form1.submit();
+	}
+
+	function judgeTime(){
+		var _etb_time=form1.etb_time.value;
+		if(_etb_time.length!=8){
+			alert("日期格式无效1,有效的日期格式是YYYYMMDD,如20030405");
+			return;
+		}
+		var _etb_time1="";
+		_etb_time1=_etb_time.substring(0,4)+"-"+_etb_time.substring(4,6)+"-"+_etb_time.substring(6,8);
+		if (!check_date(_etb_time1)){
+			alert("日期格式无效,有效的日期格式是YYYYMMDD,如20030405");
+			return;
+		}
+	}
+</script>
+
+</head>
+<body>
+
+
+
+
+<meta http-equiv="Cache-Control" content="no-transform"/>
+<meta http-equiv="Cache-Control" content="no-siteapp"/>
+<meta name="applicable-device" content="mobile"/>
+<meta name="renderer" content="webkit">
+<meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="format-detection" content="telphone=no, email=no"/>
+<meta http-equiv="Content-Language" content="zh-CN" />
+<meta name="Author" content="v">
+<meta content="易物流盐田 " name="design">
+<title>易物流盐田 </title>
+<meta name="keywords" content=""/>
+<meta name="description" content=""/>
+<link rel="stylesheet" type="text/css" href="../css/owl.carousel.min.css" media="screen"/>
+<link rel="stylesheet" type="text/css" href="../css/css_whir.css" media="screen"/>
+<link rel="stylesheet" type="text/css" href="../css/responsive.css" media="screen"/>
+<script type="text/javascript" src="../scripts/jquery-3.7.0.min.js"></script>
+<script type="text/javascript" src="../scripts/owl.carousel.min.js"></script>
+<script type="text/javascript" src="../scripts/js-whir.js"></script>
+<script type="text/javascript" src="../scripts/html5shiv.v3.72.min.js"></script>
+
+<header>
+	
+
+	<div class="topBar">
+	<div class="inner">
+		<div class="topTel">
+			<div class="pc">
+				<span>平台热线：<i>4001-856-568</i></span>
+				<span>码头热线：<i>0755-25180000</i></span>
+			</div>
+			<div class="mobile">
+				<span><a href="tel:4001-856-568">平台</a></span>
+				<span><a href="tel:0755-25180000">码头</a></span>
+			</div>
+		</div>
+		<div class="topMenu">
+			<ul>
+				<li class="wm"><a href="https://www.156yt.cn/public/aboutus.jsp">关于我们</a></li>
+				<li class="wx"><a href="javascript:void(0);">官方微信</a>
+					<div class="weixin">
+						<img src="../uploadfiles/qrcode_20230322.jpg"/>
+					</div>
+				</li>
+				<li class="yx"><a href="https://www.156yt.cn/homepage/tel_phone.jsp">码头APP</a></li>
+				<!-- <li class="zp"><a href="https://www.156yt.cn/public/recruitment.jsp">人才招聘</a></li> -->
+				<div class="clear"></div>
+			</ul>
+		</div>
+		<div class="clear"></div>
+	</div>
+</div>
+
+
+	
+
+
+<script type="text/javascript">
+function topAnchorNone(){
+	document.getElementById("topAnchor").style.display="none";//隐藏
+}
+
+</script>
+		<div id="topAnchor" class="topAnchor">
+			<img  onclick="topAnchorNone()"; style="position:fixed;right:5%;bottom:598;z-index:11;" src="../images/icon_no.gif"/>
+			
+			<a href="https://www.156yt.cn/info/news/notice_ypi/e4f551025cbc41a98cee610fd8eb84e4.html" style="position:fixed;right:5%;bottom:130;z-index:10;">
+				<img src="../images/rightImage.jpg"/>
+			</a>
+			
+
+		</div>
+
+
+	
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+
+<head>
+
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+
+    
+</head>
+	<body>
+	<div class="header">
+	<div class="inner">
+		<div class="logo">
+			<a href="https://www.156yt.cn/"><img src="../images/logo.png"/></a>
+		</div>
+		<div class="navBtn"><span></span></div>
+		<nav class="nav">
+		<ul>
+				<li id="nav1">
+					<a href="https://www.156yt.cn/">首页</a>
+				</li>
+				
+				<li class="nav-bar" id="nav2"><a href="https://www.156yt.cn/publicInfoService/index.action" >智慧港口</a>
+					<div class="jkMenu1">
+						<ul>
+							<li><a href="https://www.156yt.cn/publicInfoService/index.action">公共信息服务</a></li>
+							<li><a href="https://www.156yt.cn/clearance2/index2.action">产品和服务</a></li>
+						</ul>
+					</div>
+				</li>
+											
+				<li class="nav-bar" id="nav3"><a href="https://www.156yt.cn/clearance2/clearancePingyan.jsp">多式联运</a>
+					<div class="jkMenu1">
+						<ul>
+							<li><a href="https://www.156yt.cn/clearance2/clearancePingyan.jsp">海铁联运</a></li>
+							<li><a href="https://www.156yt.cn/clearance2/clearanceZuhegang.jsp">组合港</a></li>
+							<!-- <li><a href="https://www.156yt.cn/clearance2/clearanceWGO.jsp">进口WGO</a></li> -->
+						</ul>
+					</div>
+				</li>
+							
+									
+				<li id="nav5" class="nav-bar" >
+					<a href="https://Logistics.156yt.cn/?token=null" target="_blank">智慧物流</a>
+				</li>	
+							
+				<li id="nav4" class="nav-bar" >
+					<a href="https://www.156yt.cn/news/index.action">行业资讯</a>
+				</li>
+				
+				<div class="clear"></div>
+			</ul>
+		</nav>
+		<script type="text/javascript">
+			$('#nav' + navID).addClass('cur');
+		</script>
+		<div class="clear"></div>
+	</div>
+</div>
+	</body>
+</html>
+
+</header>
+<div class="pageBar">
+	<div class="inner">
+										<div class="breadcrumb">
+	<em>您当前的位置: </em><a href="https://www.156yt.cn/">首页</a><i>&gt;</i>
+<a href="https://www.156yt.cn/publicInfoService/index.action">公共信息服务</a>
+<i>&gt;</i><a href="#">船期公众查询</a>
+</div>
+		<div class="goback"><a
+	href="https://www.156yt.cn/publicInfoService/index.action"
+	style="cursor: pointer;">返回</a></div>
+	</div>
+</div>
+<div class="inner container">
+	<article class="cqPublic">
+
+		<div class="ggTop">
+		<h1 class="pgTitle">船期公众查询</h1>
+		<ul >
+		<span>&nbsp;</span>
+<span>&nbsp;</span>
+<span>&nbsp;</span>
+<span>&nbsp;</span>
+<span>&nbsp;</span>
+</ul>
+
+
+		</div>
+		<div class="formMain">
+		
+			<form name="form1" method="post" action="voyQuery.jsp?modify=query" onsubmit="return dd();">
+				<input type="hidden" name="pageCurrent" size="11" >
+				<div class="input first">
+					<label>起始日期：</label>
+					<em>(yyyymmdd)</em>
+					<div class="right">
+						
+        <input type="text" id="etb_time" class="text" name="etb_time" style="width: 97px" value="20261015" onblur="judgeTime()" />
+        
+					</div>
+				</div>
+				<div class="input second">
+					<label>船名：</label>
+					<div class="right">
+					
+        <input type="text"  class="text" id="ship_name" name="ship_name"  value="MSC" />
+        
+
+					</div>
+				</div>
+				<div class="input">
+					<label>码头航次：</label>
+					<div class="right">
+					
+        <input type="text" class="text" id="voyage_code" name="voyage_code" size="13">
+        
+
+					</div>
+				</div>
+				<input type="submit" name="Submit1" class="ggSubmit" value="查询"/>
+			</form>
+		</div>
+		<div class="cxResult">
+			<h2>【 查询结果 】</h2>
+			<div class="cxTable">
+				<table>
+					<tr>
+						<th class="th1">码头航次</th>
+						<th class="th2" style="width:200px;">船名</th>
+						<th class="th3">闸口</th>
+						<th class="th5">预计停靠（ETB）</th>
+						<th class="th6">预计离港（ETD）</th>
+						<th class="th6">船代</th>
+					</tr>
+					 
+
+				</table>
+			</div>
+			 
+			<div class="record">
+				<div class="total">
+					<span>总记录数：0</span>
+					<span>当前页：1</span>
+					<span>总页数：0</span>
+				</div>
+				<div class="paging">
+				  <span></span>
+            <span></span>
+            <span></span>
+               <span> </span>
+            </div>
+			</div>
+			    
+		</div>
+		<div class="pagepic2">
+<div class="pic"><a target="_blank"
+	href="https://www.156yt.cn/market/myshop/index.action?filterId=1559523"><img
+	src="../uploadfiles/lxtd.gif" /></a></div>
+<div class="pic"><a target="_blank"
+        href="https://www.156yt.cn/clearance2/clearanceValueVIPY.jsp"><img
+        src="../uploadfiles/20240903-ydx.png" /></a>
+</div>
+</div>
+	</article>
+
+</div>
+
+
+
+
+<script type="text/javascript">
+$(function(){
+	
+	$("#quickSkip").click(function(){
+		$("#layerDiv").hide();
+		$("#first-layer").hide();
+	});
+	
+	$("#register").click(function(){
+		window.open("https://www.156yt.cn/register/registerManager-companyRegisterUI.action");
+	});
+	
+	$("#login").click(function(){
+		window.open("https://www.156yt.cn/passport/");
+	})
+	
+})
+</script>
+<style type="text/css">
+*{
+	font-family:"Microsoft YaHei",微软雅黑;
+}
+/*2、设置弹框模块样式*/
+ .layerDiv{
+     width:100%;
+     height:100%;
+     background:rgb(0,0,0,0.5);
+     position:fixed;
+/*      opacity:0.5; */
+     top:0px;
+     left:0px;
+     z-index:999;
+     display:none;
+ }
+ 
+ /*设置三层div弹框都是隐藏的*/
+ #first-layer{
+     display:none;
+ }
+ 
+ .layerDiv .layer-content{
+     width:370px;
+     height:200px;
+     background:#EFEFEF;
+     opacity:1;
+     position:absolute;
+     top:0;
+     left:0;
+     bottom:0;
+     right:0;
+     margin:auto;
+     border-radius:12px;
+ }
+ .layerDiv .layer-content .content-title{
+     width:100%;
+     height:50px;
+     padding:20px;
+     box-sizing:border-box;
+     font-size:15px;
+     line-height:1.5;
+     color:#333;
+ }
+ .layerDiv .layer-content #first-content-title{
+     padding-top:30px;
+ }
+ .layerDiv .layer-content .content-btn{
+     width:100%;
+     height:20px;
+     border-top:0px solid #ddd;
+ }
+ .layerDiv .layer-content .content-btn span{
+     text-align:center;
+     line-height:300px;
+     color:#40A5FF;
+     cursor:pointer;
+ }
+ .layerDiv .layer-content .content-btn .btn-lt{
+     display:inline-block;
+     width:119px;
+     height:40px;
+     border-right:1px solid #ddd;
+ }
+ .layerDiv .layer-content .content-btn .btn-rt{
+     display:inline-block;
+     width:100px;
+     height:40px;
+     color: #33CCFF;
+ }
+ button {
+     width: 150px;  
+     padding:10px;  
+     background-color: #00BBFF;  
+     border-color: #00BBFF;  
+     color: #fff;  
+     -moz-border-radius: 10px;  
+     -webkit-border-radius: 10px;  
+     border-radius: 10px; /* future proofing */  
+     -khtml-border-radius: 10px; /* for old Konqueror browsers */  
+     text-align: center;  
+     vertical-align: middle;  
+     border: 1px solid transparent;  
+     font-weight: 900;  
+     font-size:125%;
+     margin: 50px auto;
+     display: block;
+ }  
+</style>
+<div class="layerDiv" id="layerDiv">
+	<div class="layer-content" id="first-layer">
+<!-- 		<div class="content-title" id="first-content-title"></div> -->
+		<div class="content-btn" align="center">
+			<div style="color: #313131;height: 10px;margin: 10px;font-size: 14px;">
+				温馨提示：易物流盐田平台需登录后使用，建议注册登录
+			</div>
+			<span class="btn-rt closelayer"><a href="https://www.156yt.cn/info/news/notice/53fa56296f9b407d892d609720891c88.html">注册指引</a></span>
+		</div>
+		<button id="login" onmouseover="this.style.cursor='pointer'" style="float:left;margin-left: 20px;width: 150px;">立即登录</button>
+		<button id="register" onmouseover="this.style.cursor='pointer'" style="float:right;margin-right: 20px;width: 150px;">立即注册</button>
+	</div>
+</div>
+
+
+
+
+<footer>
+	<div class="links">
+		<dl class="inner">
+			<dt>友情链接：</dt>
+			<dd><a href="http://www.yantian.gov.cn/cn/">盐田区政府</a></dd>
+			<dd><a href="http://www.ytport.com/">深圳港集团</a></dd>
+			<dd><a href="https://www.yict.com.cn/index.html">盐田国际集装箱码头</a></dd>
+		</dl>
+	</div>
+	<div class="footer">
+		<div class="inner">			
+			<div class="info">
+				<div class="copyright">
+					<p>盐田港国际资讯有限公司</p>
+					<p>版权所有 粤ICP备10058054号-3</p>
+				</div>
+				<div class="icon">
+					<a href="https://szcert.ebs.org.cn/381d7fa3-dc49-49dd-8a7f-2f032dafa5a7"><img src="../images/icon_14.png"/></a> 
+					<a href="http://www.sznet110.gov.cn/webrecord/innernet/Welcome.jsp?bano=4403401910504"><img src="../images/icon_15.png"/></a>
+				</div>
+				<div class="contact">
+					<p>深圳市盐田区进港三路盐田国际大厦11楼 邮编：518083 电话：4001-856-568 传真：0755-2529 0518</p>
+				</div>
+			</div>
+			<div class="qrcode">
+				 <ul>
+					<li>
+						<p>
+							<img src="../uploadfiles/qrcode_01.jpg"/>
+						</p>
+						<p>扫码下载易物流盐田APP</p>
+					</li>
+				<!-- 	<li>
+						<p>
+							<img src="../uploadfiles/qrcode_02.jpg"/>
+						</p>
+						<p>码头APPAPP</p>
+					</li> -->
+				</ul> 
+			</div>
+		</div>
+	</div>
+	
+</footer>
+<script>
+var _hmt = _hmt || [];
+(function() {
+  var hm = document.createElement("script");
+  hm.src = "//hm.baidu.com/hm.js?4abde670ace888216387076226f9457a";
+  var s = document.getElementsByTagName("script")[0]; 
+  s.parentNode.insertBefore(hm, s);
+})();
+</script>  
+
+</body>
+</html>

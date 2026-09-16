@@ -1,0 +1,9 @@
+# 运行时依赖（监控本体）
+# 本机已具备；无需 pip install 也能跑。
+requests>=2.31
+aiohttp>=3.9
+
+# 说明：
+#   * 解析用标准库 re，不需要 bs4/lxml
+#   * CDP 驱动浏览器用 aiohttp 的 websocket，不需要 playwright/selenium
+#   * 浏览器本身用系统已装的 Edge，无需下载内核
