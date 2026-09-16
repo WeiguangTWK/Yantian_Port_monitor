@@ -131,6 +131,8 @@ def build_command(name: str, windowed: bool, dist_root: pathlib.Path) -> "list[s
         "--paths", str(ROOT),
         "--paths", str(ROOT / "gui"),
         "--add-data", str(ROOT / "gui" / "assets") + os.pathsep + "gui/assets",
+        "--add-data", str(ROOT / "LICENSE") + os.pathsep + ".",
+        "--add-data", str(ROOT / "licenses") + os.pathsep + "licenses",
         "--workpath", str(ROOT / ".toolchain" / "pyi-build"),
         "--distpath", str(dist_root),
         "--specpath", str(ROOT / ".toolchain"),

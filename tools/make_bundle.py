@@ -13,6 +13,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 # 要打包的路径（相对项目根）。目录会递归收集 .py（以及测试的 fixtures）。
 INCLUDE_FILES = [
+    "LICENSE",
     "README.md",
     "run_monitor.py",
     "watchlist.example.json",
@@ -21,7 +22,7 @@ INCLUDE_FILES = [
     "requirements-win7.txt",
     "requirements-win7-gui.txt",
 ]
-INCLUDE_DIRS = ["ytmon", "tools", "gui", "docs"]
+INCLUDE_DIRS = ["ytmon", "tools", "gui", "docs", "licenses"]
 
 # 绝不打包的东西
 EXCLUDE_NAMES = {"__pycache__", ".recon", ".cache", "state", ".browser_profile",
@@ -50,7 +51,7 @@ SECRET_PATTERNS = [
 # 其余所有文件一律照扫。
 SCAN_EXEMPT = {"tools/make_bundle.py"}
 
-_ALLOWED_SUFFIX = {".py", ".md", ".json", ".txt", ".svg"}
+_ALLOWED_SUFFIX = {".py", ".md", ".json", ".txt", ".svg", ".jpg"}
 
 
 def iter_files(include_tests: bool) -> list[pathlib.Path]:

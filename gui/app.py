@@ -48,6 +48,7 @@ from ytmon import AppConfig, MonitorService                        # noqa: E402
 from targets import TargetsPage                                   # noqa: E402
 from monitor_settings import MonitorSettingsPage                  # noqa: E402
 from notifications import NotificationsPage                       # noqa: E402
+from about import AboutPage                                       # noqa: E402
 from gui.notification_transport import dispatch_windows           # noqa: E402
 from gui.persistent_notifications import PersistentNotifications   # noqa: E402
 from gui.monitor_runtime import Countdown, row_status             # noqa: E402
@@ -441,6 +442,9 @@ class MainWindow(FluentWindow):
         self.notifications_page.changed.connect(self._notifications_saved)
         self.targets_page.changed.connect(self.notifications_page.refresh_snapshot)
         self.settings_page.changed.connect(self.notifications_page.refresh_snapshot)
+        self.about_page = AboutPage(self)
+        self.about_page.setObjectName("aboutPage")
+        self.addSubInterface(self.about_page, QtGui.QIcon(str(ASSET_DIR / "about.svg")), "关于")
 
         self.resize(1080, 720)
         self.setWindowTitle(f"盐田船期监控  ·  {BINDING} / Qt {QT_VERSION}")

@@ -57,8 +57,14 @@ class TestBuildCommand(unittest.TestCase):
     def test_navigation_assets_are_included(self):
         self.assertIn("--add-data", self.cmd)
         self.assertIn(str(ROOT / "gui" / "assets") + os.pathsep + "gui/assets", self.cmd)
-        for name in ("home.svg", "ship.svg", "monitor.svg", "notify.svg"):
+        for name in ("home.svg", "ship.svg", "monitor.svg", "notify.svg", "about.svg", "newguilun_logo.jpg"):
             self.assertTrue((ROOT / "gui" / "assets" / name).is_file())
+
+    def test_legal_documents_are_included(self):
+        self.assertIn(str(ROOT / "LICENSE") + os.pathsep + ".", self.cmd)
+        self.assertIn(str(ROOT / "licenses") + os.pathsep + "licenses", self.cmd)
+        self.assertTrue((ROOT / "LICENSE").is_file())
+        self.assertTrue((ROOT / "licenses" / "LGPL-3.0.txt").is_file())
 
     def test_paths_include_project_root_and_gui_dir(self):
         """app.py 在运行期往 sys.path 插目录，分析期得靠 --paths 才找得到 ytmon / qt_compat。"""

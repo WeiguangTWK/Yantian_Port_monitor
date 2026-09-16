@@ -13,9 +13,9 @@
 #    它**装不进 Python 3.11+ 的环境**。本机用仓库内的便携工具链：
 #        .toolchain\py38\python.exe -m pip install -r requirements-win7-gui.txt
 #
-# ⚠️ 许可证：PySide2-Fluent-Widgets 是 GPLv3（商业用途需购买授权）。
-#    **打包成 exe 分发会触发 GPLv3 义务**（源码提供）。公司内部自用一般不算分发，
-#    但要发到公司外部就必须先过合规。详见 docs/GUI-技术选型与基座.md。
+# 许可证：安装包标注 GPLv3，本项目按 GPLv3 分发并提供对应源码。
+# GPLv3 本身允许商用；Fluent 作者另有商业授权说明，商业场景须核实。
+# 详见 LICENSE 和 licenses/THIRD_PARTY_NOTICES.md。
 #
 # ⚠️ 不要与 PyQt-Fluent-Widgets / PyQt6-… / PySide6-… 同时安装，
 #    它们的模块名都是 qfluentwidgets。

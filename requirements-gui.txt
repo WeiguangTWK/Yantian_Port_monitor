@@ -6,8 +6,8 @@
 #
 # 如果哪天确定不再需要 Win7（或将来把交付面整体上移），再考虑启用 Qt 6。
 #
-# ⚠️ 许可证提醒：PySide6-Fluent-Widgets 是 GPLv3（商业用途需购买授权）。
-#    详见 docs/GUI-技术选型与基座.md。
+# 许可证：Fluent 安装包标注 GPLv3；GPLv3 本身允许商用。
+# 作者另有商业授权说明，详见 licenses/THIRD_PARTY_NOTICES.md。
 #
 # ⚠️ 不要与 PyQt-Fluent-Widgets / PyQt6-… / PySide2-… 同时安装，
 #    它们的模块名都是 qfluentwidgets，会互相覆盖。
