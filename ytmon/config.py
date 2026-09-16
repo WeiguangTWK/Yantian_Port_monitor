@@ -158,9 +158,10 @@ class NotifyChannel:
     mail_to: list[str] = field(default_factory=list)
     use_ssl: bool = True
 
-    # windows 通道专用：气泡保持多久（秒）。
-    # 太短可能还没画出来就被撤掉；监控每 30 分钟才跑一次，等几秒无所谓。
+    # windows 通道专用：托盘图标的消息处理时长；实际气泡时长由系统决定。
     hold_seconds: float = 5.0
+    # GUI 使用独立浮窗，直到手动关闭或程序退出。
+    persistent: bool = False
 
     # 配置文件里出现了但本类不认识的键。**不写回文件**，只在校验时报出来。
     #
@@ -194,6 +195,10 @@ class NotifyChannel:
                 errs.append("email 通道的 smtp_port 不合法")
         if self.kind == "windows" and self.hold_seconds < 0:
             errs.append("windows 通道的 hold_seconds 不能为负")
+        if not isinstance(self.persistent, bool):
+            errs.append("persistent 必须为布尔值")
+        elif self.persistent and self.kind != "windows":
+            errs.append("persistent 仅适用于 windows 通道")
         return errs
 
 
@@ -225,6 +230,8 @@ def _channel_to_dict(c: NotifyChannel) -> dict:
             out[k] = v
     if c.kind == "windows" and c.hold_seconds != 5.0:
         out["hold_seconds"] = c.hold_seconds
+    if c.kind == "windows" and c.persistent:
+        out["persistent"] = True
     if c.kind == "email":
         out["smtp_port"] = c.smtp_port
         out["use_ssl"] = c.use_ssl

@@ -47,6 +47,9 @@ QApplication = QtWidgets.QApplication
 from ytmon import AppConfig, MonitorService                        # noqa: E402
 from targets import TargetsPage                                   # noqa: E402
 from monitor_settings import MonitorSettingsPage                  # noqa: E402
+from notifications import NotificationsPage                       # noqa: E402
+from gui.notification_transport import dispatch_windows           # noqa: E402
+from gui.persistent_notifications import PersistentNotifications   # noqa: E402
 from gui.monitor_runtime import Countdown, row_status             # noqa: E402
 from ytmon.notify import Notifier                                 # noqa: E402
 from ytmon.store import target_key                                # noqa: E402
@@ -90,6 +93,7 @@ class MonitorWorker(QThread):
     event = Signal(str, dict)          # 进度事件（on_event 回调转出来）
     finished_ok = Signal(object)       # CycleReport
     failed = Signal(str)
+    persistent_notification = Signal(str, str)
 
     def __init__(self, cfg: AppConfig, parent=None):
         super().__init__(parent)
@@ -103,7 +107,9 @@ class MonitorWorker(QThread):
             if self.cfg.enabled_channels:
                 try:
                     Notifier(self.cfg.enabled_channels, self.cfg.settings,
-                             on_event=self._on_event).notify_cycle(report)
+                             on_event=self._on_event,
+                             windows_transport=lambda channel, message: dispatch_windows(
+                                 channel, message, self.persistent_notification.emit)).notify_cycle(report)
                 except Exception as error:
                     self._on_event("log", {"message": f"通知处理失败：{error}", "level": "error"})
             self.finished_ok.emit(report)
@@ -123,12 +129,14 @@ class MonitorPage(QWidget):
     """监控面板：目标表格 + 操作按钮 + 进度 + 日志。"""
 
     busy_changed = Signal(bool)
+    persistent_notification = Signal(str, str)
 
     def __init__(self, cfg: AppConfig, parent=None):
         super().__init__(parent)
         self.cfg = cfg
         self.worker: MonitorWorker | None = None
         self.querying = False
+        self.notification_busy = False
         self.monitoring = False
         self.countdown = Countdown()
         self.target_states = {}
@@ -219,6 +227,8 @@ class MonitorPage(QWidget):
         if self.querying:
             self.append_log("[skip] 上一轮还没跑完")
             return
+        if self.notification_busy:
+            return
 
         try:
             self.cfg = AppConfig.load(CONFIG_PATH)             # 每轮重载配置
@@ -250,6 +260,7 @@ class MonitorPage(QWidget):
 
         self.worker = MonitorWorker(self.cfg, self)
         self.worker.event.connect(self._on_event)
+        self.worker.persistent_notification.connect(self.persistent_notification)
         self.worker.finished_ok.connect(self._on_done)
         self.worker.failed.connect(self._on_failed)
         self.worker.finished.connect(self._on_thread_finished)
@@ -325,6 +336,8 @@ class MonitorPage(QWidget):
         if self.monitoring:
             self._stop_watch()
             return
+        if self.notification_busy:
+            return
         self.monitoring = True
         self.btn_watch.setText('停止监听')
         self.append_log('监听已启动')
@@ -367,6 +380,10 @@ class MonitorPage(QWidget):
             self.progress.setValue(0)
             self.countdown_text.setText('正在查询；完成后继续监听' if self.monitoring else '正在查询；自动监听已停止')
             return
+        if self.notification_busy:
+            self.progress.setValue(self.countdown.bar_value)
+            self.countdown_text.setText('测试推送中，自动查询暂缓')
+            return
         if not self.monitoring:
             self.progress.setValue(0)
             self.countdown_text.setText('监听未启动')
@@ -377,6 +394,11 @@ class MonitorPage(QWidget):
         self.countdown_text.setText(f'距离下一次查询：{minutes:02d}:{seconds:02d}')
         if self.countdown.due and QApplication.activeModalWidget() is None:
             self._start()
+
+    def set_notification_busy(self, busy):
+        self.notification_busy = busy
+        self.btn_run.setEnabled(not busy and not self.querying)
+        self._tick()
 
     # ---------------------------------------------------------- 小工具
 
@@ -393,7 +415,9 @@ class MonitorPage(QWidget):
 class MainWindow(FluentWindow):
     def __init__(self, cfg: AppConfig):
         super().__init__()
+        self.persistent_notifications = PersistentNotifications(self)
         self.monitor_page = MonitorPage(cfg, self)
+        self.monitor_page.persistent_notification.connect(self.persistent_notifications.show_message)
         self.monitor_page.setObjectName("monitorPage")
 
         self.addSubInterface(self.monitor_page, QtGui.QIcon(str(ASSET_DIR / "home.svg")), "主页")
@@ -408,9 +432,32 @@ class MainWindow(FluentWindow):
         self.monitor_page.busy_changed.connect(self.settings_page.set_busy)
         self.settings_page.changed.connect(self._settings_saved)
         self.targets_page.changed.connect(self.settings_page.refresh_snapshot)
+        self.notifications_page = NotificationsPage(CONFIG_PATH, self)
+        self.notifications_page.persistent_notification.connect(self.persistent_notifications.show_message)
+        self.notifications_page.setObjectName("notificationsPage")
+        self.addSubInterface(self.notifications_page, QtGui.QIcon(str(ASSET_DIR / "notify.svg")), "通知与测试")
+        self.monitor_page.busy_changed.connect(self.notifications_page.set_busy)
+        self.notifications_page.testing_changed.connect(self._notification_testing)
+        self.notifications_page.changed.connect(self._notifications_saved)
+        self.targets_page.changed.connect(self.notifications_page.refresh_snapshot)
+        self.settings_page.changed.connect(self.notifications_page.refresh_snapshot)
 
         self.resize(1080, 720)
         self.setWindowTitle(f"盐田船期监控  ·  {BINDING} / Qt {QT_VERSION}")
+
+    def _notification_testing(self, busy):
+        self.targets_page.set_busy(busy)
+        self.settings_page.set_busy(busy)
+        self.monitor_page.set_notification_busy(busy)
+
+    def _notifications_saved(self):
+        self.settings_page.refresh_snapshot()
+        try:
+            self.targets_page.store.reload()
+            self.targets_page.refresh()
+        except (OSError, ValueError) as error:
+            self.targets_page.message.setText(str(error))
+        self._reload_config()
 
     def _settings_saved(self) -> None:
         try:
@@ -430,11 +477,12 @@ class MainWindow(FluentWindow):
 
     def closeEvent(self, event):
         self.monitor_page._stop_watch()
-        if self.monitor_page.querying:
+        if self.monitor_page.querying or self.notifications_page.testing:
             event.ignore()
-            self.monitor_page._toast('查询尚未结束', '已停止自动监听，请等待本轮查询完成后再关闭。')
+            self.monitor_page._toast('后台任务尚未结束', '已停止自动监听，请等待查询或测试推送完成后再关闭。')
             return
         self.monitor_page.timer.stop()
+        self.persistent_notifications.close_all()
         super().closeEvent(event)
 
 

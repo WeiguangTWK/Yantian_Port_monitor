@@ -306,6 +306,8 @@ def send_windows(ch: NotifyChannel, msg: AlertMessage) -> None:
     气泡正文有长度上限（Windows 定死 255 字符），超了会被截断。
     真正需要完整内容时应该配一个能承载长文本的通道。
     """
+    if ch.persistent:
+        raise RuntimeError("保持显示通知仅支持 GUI，请运行 GUI 或关闭 persistent。")
     from .winnotify import show
 
     level = "info"
@@ -359,11 +361,12 @@ class Notifier:
     """
 
     def __init__(self, channels: list[NotifyChannel], settings,
-                 transport=None, on_event=None):
+                 transport=None, on_event=None, windows_transport=None):
         self.channels = [c for c in channels if c.enabled]
         self.settings = settings
         self.transport = transport or _post_json
         self.on_event = on_event
+        self.windows_transport = windows_transport or send_windows
         self.throttle = AlertThrottle(
             getattr(settings, "alert_state_file", "state/alert_state.json"),
             getattr(settings, "alert_cooldown_seconds", 3600),
@@ -498,7 +501,7 @@ class Notifier:
                 if ch.kind == "email":
                     send_email(ch, msg)
                 elif ch.kind == "windows":
-                    send_windows(ch, msg)
+                    self.windows_transport(ch, msg)
                 else:
                     url, payload = build_payload(ch, msg)
                     body = self.transport(url, payload)
