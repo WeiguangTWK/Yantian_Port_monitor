@@ -1,19 +1,38 @@
-# Win7 GUI 依赖（Python 3.8）
+# GUI 依赖 —— **这是 GUI 的主路径**（Python 3.8 + PySide2 / Qt 5.15）
+#
+# 2026-09-16 定案：GUI 绑定收敛到 PySide2（开发与交付同一个环境）。
+#   原 requirements-gui.txt（PySide6 / Qt 6）已标为遗留分支。
 #
 # 为什么不是 PySide6：
 #   Qt 6 官方只支持 Windows 10 (1809+) / Windows 11，不支持 Win7。
-#   PySide2 = Qt 5.15，支持 Win7。
+#   PySide2 = Qt 5.15，Win7 → Win11 都能跑。
 #   PySide2-Fluent-Widgets 与 PySide6 版是同一作者、同一套 API，
-#   所以 gui/app.py 只需改 import，界面代码不用重写。
+#   所以 gui/app.py 只需换 import，界面代码不用重写。
 #
-# 安装：
-#   python -m pip install -r requirements-win7-gui.txt
+# ⚠️ PySide2 5.15.2.1 的 requires_python 是 <3.11 ——
+#    它**装不进 Python 3.11+ 的环境**。本机用仓库内的便携工具链：
+#        .toolchain\py38\python.exe -m pip install -r requirements-win7-gui.txt
 #
-# ⚠️ 许可证：PySide2-Fluent-Widgets 是 GPLv3（商业用途需购买授权），
-#    与 PySide6 版一致。详见 docs/GUI-技术选型与基座.md。
+# ⚠️ 许可证：PySide2-Fluent-Widgets 是 GPLv3（商业用途需购买授权）。
+#    **打包成 exe 分发会触发 GPLv3 义务**（源码提供）。公司内部自用一般不算分发，
+#    但要发到公司外部就必须先过合规。详见 docs/GUI-技术选型与基座.md。
 #
 # ⚠️ 不要与 PyQt-Fluent-Widgets / PyQt6-… / PySide6-… 同时安装，
 #    它们的模块名都是 qfluentwidgets。
 
+# Qt 绑定。5.15.2.1 是 PySide2 的最后一个版本，有 cp38 win_amd64 / win32 wheel。
 PySide2==5.15.2.1
 PySide2-Fluent-Widgets>=1.11.3
+
+# 下面这些是上面两行的**传递依赖**，不用手写也会被装上，列出来是因为它们有讲究：
+#
+#   PySide2-Frameless-Window → pywin32
+#       硬运行时依赖。qfluentwidgets 自己 import win32con；
+#       它的依赖 qframelesswindow 用 `from win32comext.shell import shellcon`。
+#       ⚠️ 打包（PyInstaller）时必须显式补隐藏导入，否则运行期报
+#          No module named 'win32com' —— 见 tools/build_gui.py 与
+#          docs/GUI-Win7打包实测.md §5.1。
+#       已实测 pywin32 311 的 PE 子系统版本是 6.0，Win7 上可加载。
+#
+#   darkdetect
+#       纯 Python，用来跟随系统深浅色。

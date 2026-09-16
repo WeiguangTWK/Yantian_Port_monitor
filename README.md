@@ -389,13 +389,30 @@ Register-ScheduledTask -TaskName "盐田船期监控" -Action $action -Trigger $
 
 ## GUI
 
-图形界面还在准备阶段。**基座已就绪**：`MonitorService` 与任何 GUI 库解耦，
-GUI 只是它的一个消费者。选型与骨架见 **`docs/GUI-技术选型与基座.md`**。
+**绑定已定案：PySide2 / Qt 5.15** —— 交付目标是 Win7，而 Qt 6 不支持 Win7。
+开发与交付用同一个 Python 3.8 环境；PySide6/Qt 6 降为遗留分支。
+
+`gui/app.py` 已在 py3.8 + PySide2 上**实测跑通**（离屏与真桌面都能构造并渲染主窗口），
+也能用 PyInstaller 冻结后运行。界面本身仍是骨架：监控面板可用，目标管理/设置未实现。
 
 ```powershell
-pip install -r requirements-gui.txt
-python gui/app.py
+# 1) 依赖（用仓库内的 Python 3.8 便携工具链，见 docs/GUI-Win7打包实测.md §1.1）
+.toolchain\py38\python.exe -m pip install -r requirements-win7-gui.txt
+
+# 2) 跑起来
+.toolchain\py38\python.exe gui\app.py
+
+# 3) 打包成可以整个拷走的文件夹（产物在 dist/gui/ytmon-gui/）
+.toolchain\py38\python.exe tools\build_gui.py
 ```
+
+> ⚠️ **许可证**：`PySide2-Fluent-Widgets` 是 **GPLv3**。
+> **打包成 exe 分发会触发源码提供义务** —— 公司内部自用一般不算分发，
+> 但要发到公司外部就必须先过合规。
+>
+> 选型依据与决策记录：`docs/GUI-技术选型与基座.md`；
+> 实测工具链、打包命令与坑：`docs/GUI-Win7打包实测.md`；
+> 现场检查表：`docs/Win7-实机验证指南.md`。
 
 ---
 

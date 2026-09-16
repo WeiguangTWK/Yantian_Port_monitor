@@ -232,6 +232,14 @@ def main(argv: list[str] | None = None) -> int:
     from .console import ensure_safe_stdout
     ensure_safe_stdout()
 
+    # 冻结成 exe 后 CWD 不可信（双击 / 快捷方式 / 计划任务各不相同），
+    # 而 state/、.cache/、.browser_profile/ 都是相对 CWD 解析的。
+    # 源码运行时 anchor_to_app_dir() 什么都不做。
+    from .paths import anchor_to_app_dir, writable_warning
+    warn = writable_warning(anchor_to_app_dir())
+    if warn:
+        print(warn, file=sys.stderr)
+
     args = build_parser().parse_args(argv)
     try:
         cfg = AppConfig.load(args.config)

@@ -1,19 +1,18 @@
-"""GUI 骨架（PySide6 或 PySide2 + Fluent-Widgets）。
+"""GUI 骨架（PySide2 / Qt 5.15 + Fluent-Widgets）。
 
-⚠️ 状态：**尚未运行验证**。依赖装好后需要跑一遍再修。
+绑定由 `qt_compat` 决定：**PySide2 优先**（交付目标，Win7 → Win11 都能跑）；
+PySide6 / Qt 6 是遗留分支（Qt 6 不支持 Win7）。界面代码只写一套。
 
-绑定选择由 `qt_compat` 自动决定：
-    Win10/11 → PySide6（Qt 6）
-    Win7     → PySide2（Qt 5.15，因为 Qt 6 不支持 Win7）
-界面代码只写一套。
+状态（2026-09-16）：已在 Python 3.8 + PySide2 上**实测跑通** ——
+离屏与真桌面都能构造并渲染主窗口，也能用 PyInstaller 冻结后运行。
+见 `docs/GUI-Win7打包实测.md`。
 
 为什么先写它：GUI 最容易写错的不是界面，而是
 「不要在 worker 线程里碰控件」。这里把正确模式固化下来 ——
 `MonitorService` 在 QThread 里跑，事件通过 signal 回到 UI 线程。
 
 运行：
-    Win10/11:  pip install PySide6-Fluent-Widgets
-    Win7:      pip install -r requirements-win7-gui.txt
+    pip install -r requirements-win7-gui.txt
     python gui/app.py
 """
 
@@ -25,6 +24,13 @@ import traceback
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+
+# 先把控制台编码兜底装上：下面任何一句报错都可能带中文，
+# 而中文 Windows 下**重定向输出**时会因 GBK 编码不了而崩在半路（见 ytmon/console.py）。
+# cli.py 早就有这一句，GUI 入口之前漏了。
+from ytmon.console import ensure_safe_stdout                 # noqa: E402
+
+ensure_safe_stdout()
 
 try:
     from qt_compat import (BINDING, NO_EDIT_TRIGGERS, QT_VERSION, QThread,
@@ -39,10 +45,19 @@ try:
                                 PrimaryPushButton, ProgressBar, PushButton,
                                 SubtitleLabel, TextEdit)
 except ImportError as e:                                      # pragma: no cover
-    print("缺少 qfluentwidgets。请安装：\n"
-          "    Win10/11:  pip install PySide6-Fluent-Widgets\n"
-          "    Win7:      pip install -r requirements-win7-gui.txt\n"
-          f"（原始错误：{e}）", file=sys.stderr)
+    # ⚠️ 不要把原因说错：这个 ImportError 有两种来源，而它们的**修法相反**。
+    # 这里曾经一律打印"请安装 qfluentwidgets"，结果打包后报
+    # No module named 'win32com' 时把人引向"去装包"，方向完全错。
+    print(f"导入 qfluentwidgets 失败，原始错误：{e}\n"
+          "\n"
+          "先看上面那行原始错误 —— 它才是原因。两种常见情况：\n"
+          "  * 环境里确实没装 qfluentwidgets：\n"
+          "        pip install -r requirements-win7-gui.txt\n"
+          "  * **只有打包后的 exe 报错**（典型：No module named 'win32com'）：\n"
+          "        那是冻结包漏收了隐藏导入，**不是没装包** ——\n"
+          "        去补 --collect-submodules win32comext 等，\n"
+          "        见 docs/GUI-Win7打包实测.md §5.1",
+          file=sys.stderr)
     raise SystemExit(2)
 
 # 从兼容层统一取控件类（两套绑定通用）
@@ -55,10 +70,14 @@ QApplication = QtWidgets.QApplication
 
 from ytmon import AppConfig, MonitorService                        # noqa: E402
 from ytmon.errors import TokenError                                # noqa: E402
+from ytmon.paths import (anchor_to_app_dir, app_base_dir,          # noqa: E402
+                         writable_warning)
 from ytmon.service import (STATUS_CHANGED, STATUS_ERROR,           # noqa: E402
                            STATUS_FIRST, STATUS_MISSING, STATUS_SAME)
 
-CONFIG_PATH = "watchlist.json"
+# 配置用**绝对路径**：打包成 exe 之后 CWD 不可信
+# （双击、快捷方式、计划任务各自的"当前目录"都不一样）。
+CONFIG_PATH = str(app_base_dir() / "watchlist.json")
 
 STATUS_TEXT = {
     STATUS_FIRST: "首次",
@@ -293,6 +312,15 @@ class MainWindow(FluentWindow):
 
 
 def main() -> int:
+    # 冻结时把 CWD 钉到 exe 所在目录：`state/`、`.cache/`、`.browser_profile/`
+    # 都是相对 CWD 解析的，不钉的话它们会散到"启动时所在目录"
+    # （被计划任务拉起时常常是 C:\Windows\System32）。
+    # 源码运行时这个调用什么都不做。
+    base = anchor_to_app_dir()
+    warn = writable_warning(base)
+    if warn:
+        print(warn, file=sys.stderr)
+
     try:
         cfg = AppConfig.load(CONFIG_PATH)
     except FileNotFoundError:
