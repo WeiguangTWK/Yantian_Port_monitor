@@ -130,6 +130,43 @@ class TestRelaxApi(unittest.TestCase):
                 os.environ["PYTHONIOENCODING"] = old
 
 
+    def test_frozen_exe_ignores_pythonioencoding_so_we_must_still_switch(self):
+        """冻结的 exe 会**忽略** PYTHONIOENCODING，所以不能因为它"存在"就不切 UTF-8。
+
+        实测（重定向到文件看落盘字节）：
+            冻结 exe  PYTHONIOENCODING=utf-8 -> **gbk**
+            非冻结     PYTHONIOENCODING=utf-8 -> utf-8
+        不修的话就是最坏组合：用户以为设了 utf-8，拿到 cp936，
+        而本模块又因为"变量存在"放弃了切 UTF-8。
+        """
+        import io
+        from ytmon.console import _relax
+
+        stream = io.TextIOWrapper(io.BytesIO(), encoding="gbk")
+        old_env = os.environ.get("PYTHONIOENCODING")
+        had_frozen = hasattr(sys, "frozen")
+        old_frozen = getattr(sys, "frozen", None)
+
+        os.environ["PYTHONIOENCODING"] = "utf-8"
+        sys.frozen = True                                          # type: ignore[attr-defined]
+        try:
+            _relax(stream, prefer_utf8=True)
+            self.assertIn("utf8", (stream.encoding or "").lower().replace("-", ""),
+                          "冻结时该由我们自己把重定向输出切成 UTF-8")
+        finally:
+            if had_frozen:
+                sys.frozen = old_frozen                            # type: ignore[attr-defined]
+            else:
+                try:
+                    del sys.frozen                                 # type: ignore[attr-defined]
+                except AttributeError:
+                    pass
+            if old_env is None:
+                os.environ.pop("PYTHONIOENCODING", None)
+            else:
+                os.environ["PYTHONIOENCODING"] = old_env
+
+
 class TestEntryPointsCallIt(unittest.TestCase):
     """入口点忘了调用兜底 = 坑还在。"""
 

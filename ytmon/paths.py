@@ -56,7 +56,7 @@ def is_writable_dir(path: Any) -> bool:
 
     probe = d / (".ytmon-write-probe-%d" % os.getpid())
     try:
-        with open(probe, "w") as fh:
+        with open(probe, "w", encoding="utf-8") as fh:
             fh.write("x")
         return True
     except OSError:

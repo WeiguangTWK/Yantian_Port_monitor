@@ -1,4 +1,4 @@
-# GUI 依赖 —— **这是 GUI 的主路径**（Python 3.8 + PySide2 / Qt 5.15）
+﻿# GUI 依赖 —— **这是 GUI 的主路径**（Python 3.8 + PySide2 / Qt 5.15）
 #
 # 2026-09-16 定案：GUI 绑定收敛到 PySide2（开发与交付同一个环境）。
 #   原 requirements-gui.txt（PySide6 / Qt 6）已标为遗留分支。

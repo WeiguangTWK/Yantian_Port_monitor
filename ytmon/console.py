@@ -26,7 +26,9 @@
 * 其余情况 → 只把 `errors` 放宽成 `replace`，保证**永不因编码中断**
 * 控制台本来就是好的，不折腾
 
-`PYTHONIOENCODING` 由用户显式设置时，不覆盖编码选择，只放宽 errors。
+`PYTHONIOENCODING` 由用户显式设置时，不覆盖编码选择，只放宽 errors ——
+但**只在解释器真的认这个变量时**才这么算：冻结出来的 exe 会忽略它，
+详见 `_pythonioencoding_is_honoured()`。
 """
 
 from __future__ import annotations
@@ -55,6 +57,34 @@ def _is_tty(stream: Any) -> bool:
         return False
 
 
+def _pythonioencoding_is_honoured() -> bool:
+    """`PYTHONIOENCODING` 在当前解释器里是否真的生效。
+
+    ⚠️ **冻结出来的 exe（PyInstaller）完全忽略这个变量。** 实测（同一个入口，
+    重定向到文件后看落盘字节）：
+
+        | PYTHONIOENCODING | 冻结 exe | 非冻结 py38（对照） |
+        |---|---|---|
+        | 未设     | utf-8 | utf-8 |
+        | utf-8    | **gbk** | utf-8 |
+        | gbk      | gbk   | gbk   |
+        | latin-1  | **gbk** | 生效（输出被 latin-1 搅乱） |
+
+    为什么这条必须单独判：不判的话会出现**最坏的组合** ——
+    用户设了 `PYTHONIOENCODING=utf-8` 以为万事大吉，实际拿到 cp936；
+    而本模块又因为"这个变量存在"而放弃把编码切成 UTF-8。
+    两头都指望对方，结果谁都没管。
+    """
+    return not getattr(sys, "frozen", False)
+
+
+def _user_chose_encoding() -> bool:
+    """用户是不是**真的**指定了输出编码（变量存在 **且** 解释器认它）。"""
+    if not os.environ.get("PYTHONIOENCODING"):
+        return False
+    return _pythonioencoding_is_honoured()
+
+
 def _relax(stream: Any, *, prefer_utf8: bool) -> Optional[str]:
     """把流的编码/错误策略放宽。返回生效后的编码；动不了就返回 None。"""
     reconfigure = getattr(stream, "reconfigure", None)
@@ -62,8 +92,8 @@ def _relax(stream: Any, *, prefer_utf8: bool) -> Optional[str]:
         return None                       # Python 3.6 及更早的替代流，够不着就算了
 
     kwargs: dict = {"errors": "replace"}
-    # 用户显式指定了 PYTHONIOENCODING 就尊重它，只放宽 errors
-    if prefer_utf8 and not _is_utf8(stream) and not os.environ.get("PYTHONIOENCODING"):
+    # 用户显式指定了 PYTHONIOENCODING（且解释器认它）就尊重它，只放宽 errors
+    if prefer_utf8 and not _is_utf8(stream) and not _user_chose_encoding():
         kwargs["encoding"] = "utf-8"
 
     try:

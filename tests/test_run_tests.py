@@ -36,7 +36,7 @@ class TestProbe(unittest.TestCase):
         d = tempfile.mkdtemp(prefix="ytmon-verify-")
         try:
             target = os.path.join(d, "w.txt")
-            with open(target, "w") as fh:
+            with open(target, "w", encoding="utf-8") as fh:
                 fh.write("x")
             self.assertTrue(os.path.exists(target))
         finally:
@@ -61,14 +61,14 @@ class TestPatch(unittest.TestCase):
         self.assertNotEqual(d1, d2)
         for d in (d1, d2):
             self.assertTrue(os.path.isdir(d))
-            with open(os.path.join(d, "f.txt"), "w") as fh:   # 关键：必须写得进去
+            with open(os.path.join(d, "f.txt"), "w", encoding="utf-8") as fh:   # 关键：必须写得进去
                 fh.write("x")
 
     def test_temporary_directory_works_with_the_patch(self):
         """测试里绝大多数用例用的是 TemporaryDirectory，它内部也走 mkdtemp。"""
         run_tests._patch_mkdtemp()
         with tempfile.TemporaryDirectory(prefix="ytmon-td-") as d:
-            with open(os.path.join(d, "f.txt"), "w") as fh:
+            with open(os.path.join(d, "f.txt"), "w", encoding="utf-8") as fh:
                 fh.write("x")
             self.assertTrue(os.path.isdir(d))
         self.assertFalse(os.path.exists(d))

@@ -51,7 +51,7 @@ def _mkdtemp_is_writable() -> "tuple[bool, str]":
         return False, "建目录就失败：%s" % e
 
     try:
-        with open(os.path.join(d, "probe.txt"), "w") as fh:
+        with open(os.path.join(d, "probe.txt"), "w", encoding="utf-8") as fh:
             fh.write("x")
         return True, "正常"
     except OSError as e:

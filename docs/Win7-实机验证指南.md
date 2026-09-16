@@ -2,19 +2,58 @@
 
 > 目的：在**真正的那台 Win7 机器**上，确认方案是否成立。
 
-## 当前进度（2026-09-14 更新）
+## 当前进度（2026-09-16 更新）
 
 | 环节 | 状态 |
 |---|---|
-| Win7 机器上的浏览器能否打开站点 | ✅ **已确认能打开** —— 最关键的未知已排除 |
-| 项目文件复制到 Win7 | ⚠️ 曾报 `No module named 'ytmon'`（文件没复制全，见第 0 步） |
+| Win7 机器上的浏览器能否打开站点 | ✅ **已确认能打开** —— 最关键的未知已排除，**别再花时间验它** |
 | 告警通道 | ✅ 已在现代机上端到端验证（含真实 HTTP 发送） |
-| Python 3.8 环境 | 待确认 |
-| 完整自检（含 cookie 引导） | 待跑 |
-| 告警通道在 Win7 上实际发送 | 待跑（第 5 步） |
+| **冻结 exe 能否在 Win7 启动** | ⬜ **本次现场要验的第一件事**（在 Win11 上已跑通） |
+| 在 Win7 上跑完整自检（含 cookie 引导） | ⬜ 待跑 |
+| 告警通道在 Win7 上实际发送 | ⬜ 待跑 |
+| Python 3.8 环境 | ⬜ 只有走源码备胎时才需要 |
 
-> **结论：Win7 路线成立**，剩下的是把环境搭起来。
-> 下面的第 0 步和第 2 步是你现在要做的；第 3 步（浏览器能否过挑战）**你已经验证过了**。
+> **结论：Win7 路线成立**，剩下的是把现场那几项跑完。
+>
+> ⚠️ **路线变了**：现在有一条**不需要在 Win7 上装 Python、也不需要 pip** 的路
+> （冻结 exe），见下面「★ 最快路线」。第 0~6 步的源码路线只在冻结 exe 起不来时才需要。
+
+---
+
+## ★ 最快路线：用冻结好的 exe（2026-09-16 新增）
+
+现场包在 `dist/release/ytmon-win7-<日期>/`，结构：
+
+```
+现场必读.txt            ← 先看这个
+第1步-环境自检.cmd
+第2步-跑一轮监控.cmd
+第3步-测告警通道.cmd
+ytmon\                  ← 三个 exe 同处一个文件夹
+  ytmon-gui.exe           图形界面（windowed，无控制台）
+  ytmon.exe               服务端 / 命令行
+  ytmon-check.exe         环境自检
+  watchlist.example.json
+浏览器\                 Supermium 安装包 + 说明
+备胎-源码与Python\       Python 安装包 + 源码 zip + 预下载的 wheels + 说明
+文档\                   本文与另外两份
+```
+
+四个要点：
+
+1. **三个 exe 必须留在同一个文件夹里。**
+   冻结后配置与数据的基准就是 exe 所在目录，它们共用 `watchlist.json`、
+   `state\`、`.cache\`、`.browser_profile\` —— 所以 GUI 能看到服务端查到的状态，
+   两边也不会各自过一次 EdgeOne 挑战。单独把某个 exe 拷出去是用不了的。
+2. 先双击 `第1步-环境自检.cmd`，看最后「结果：」那一行。
+3. 把 `ytmon\watchlist.example.json` 复制成 `ytmon\watchlist.json`，改好 `targets`，
+   再跑第 2 步。
+4. 要带回来的文件：`check-log.txt`、`run-log.txt`、`alert-log.txt`，
+   以及 GUI 起不来时的 `ytmon\ytmon-gui.log`。
+
+> **为什么还是需要浏览器**：Win7 上仍然要有 Chromium 系浏览器（Supermium），
+> 它不会被打进 exe。装完默认在 `C:\Program Files\Supermium\`，
+> 自检的自动探测里**已经包含这个路径**，不用手工指。
 
 ---
 
@@ -28,10 +67,9 @@ Win7 上有三个硬约束（详见 `docs/GUI-技术选型与基座.md`）：
 | Python 3.9+ 不支持 Win7 | 运行时必须用 **Python 3.8** |
 | Edge 最高只能到 109（已 EOL） | 需要 **Supermium**（Chromium 138 内核的 Win7 分支） |
 
-前两条是**确定的**（有官方文档），第三条是**待验证的**：
-Supermium 能不能过腾讯 EdgeOne 的挑战，只有实机跑过才知道。
-
-**如果第三条不成立，整个 Win7 路线就要重新设计** —— 所以先花 15 分钟验证，别先写代码。
+前两条是**确定的**（有官方文档）。
+第三条（Supermium 能不能过 EdgeOne 挑战）**已经在真机上确认能过**，
+所以现在最大的未知变成了：**冻结出来的 exe 能不能在 Win7 上启动**。
 
 ---
 
@@ -274,6 +312,9 @@ python run_monitor.py --test-alert
 
 | 报错原文 | 真正的原因 | 怎么办 |
 |---|---|---|
+| **双击 exe 什么都没发生**（闪一下，窗口都没出） | 冻结出来的 windowed 产物**没有控制台**，出错时 `print` 和未捕获异常都无处可去 | 看 exe 同目录的 `ytmon-gui.log`（**已修 2026-09-16**：现在会弹原生错误框 + 写日志）。最常见原因是同目录缺 `watchlist.json` |
+| `UnicodeDecodeError: 'gbk' codec can't decode byte 0xa1 ...`（pip 读 requirements 时） | requirements 文件是 UTF-8 且含中文注释，却没有 BOM —— pip 按 `locale.getpreferredencoding()`（中文 Windows 是 cp936）解码 | **已修（2026-09-16）**：四个 requirements 文件都加了 UTF-8 BOM。手上若是旧包，先手工装：`pip install requests aiohttp async-timeout` |
+| 报缺 `api-ms-win-crt-*.dll` | Win7 缺 Universal C Runtime | 装 **KB2999226**，再试 |
 | `No module named 'ytmon'` | 文件没复制全 | 用 `make_bundle.py` 重新打包，整个解压（第 0 步） |
 | 浏览器那行说"没有找到可用的 Chromium 系浏览器" | Supermium 不在已知扫描路径里 | 用 `--browser "C:\Supermium\supermium.exe"` 显式指定 |
 | 浏览器那行说"**路径存在但启动不了**"，并提到 `WinError 2` / 运行时库 | 缺 VC++ 运行库，或只挑了个 exe 出来没整包解压 | 装 `vc_redist.x64.exe`；确认是整个压缩包解压的 |

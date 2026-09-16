@@ -402,6 +402,17 @@ def main() -> int:
         except Exception:                                    # noqa: BLE001
             pass
 
+    # 冻结成 exe 之后 CWD 不可信（双击 / 快捷方式 / 计划任务各不相同），
+    # 而 --config 默认是相对的；源码运行时这个调用什么都不做。见 ytmon/paths.py。
+    # 同样不允许它把自检弄挂。
+    try:
+        from ytmon.paths import anchor_to_app_dir, writable_warning
+        warn = writable_warning(anchor_to_app_dir())
+        if warn:
+            print(warn)
+    except Exception:                                        # noqa: BLE001
+        pass
+
     ap = argparse.ArgumentParser(description="盐田船期监控 —— 环境自检")
     ap.add_argument("--token", default=None,
                     help="可选。实测公众查询不需要 token，一般不用填")

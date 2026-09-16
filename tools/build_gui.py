@@ -109,7 +109,7 @@ def build_env(verbose: bool = True) -> "dict[str, str]":
     probe_dir = tempfile.gettempdir()
     try:
         probe = os.path.join(probe_dir, ".ytmon-tmp-probe-%d" % os.getpid())
-        with open(probe, "w") as fh:
+        with open(probe, "w", encoding="utf-8") as fh:
             fh.write("x")
         os.unlink(probe)
     except OSError as e:

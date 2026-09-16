@@ -5,3 +5,8 @@
 # 于是每检出一份工作区就"所有文件都被改动"，diff 全是噪音；
 # 而且 tools/make_bundle.py 是按工作区字节打包的，行尾一变交付包内容也跟着变。
 * text=auto eol=lf
+
+# Windows 批处理**必须** CRLF：cmd 对 LF-only 的 goto/label 处理不可靠。
+# 交付包里会放 .cmd，所以这条不能省。
+*.cmd text eol=crlf
+*.bat text eol=crlf

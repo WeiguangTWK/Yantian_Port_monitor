@@ -1,0 +1,85 @@
+备胎路线：源码 + Python 3.8
+================================================================================
+什么时候用这条路线
+--------------------------------------------------------------------------------
+  冻结出来的 exe 在这台 Win7 上起不来时。
+
+  ⚠️ 但**先按「现场必读.txt」最后那节试一次**：报缺
+     api-ms-win-crt-*.dll 或 WinError 2 时，装 KB2999226 + vc_redist.x64.exe
+     通常就好了，不必走这条路。
+
+
+本目录里有什么
+--------------------------------------------------------------------------------
+  python-3.8.10-amd64.exe   Python 3.8.10 官方安装包（Win7 上能用的最后一个版本）
+  ytmon-<日期>.zip          项目源码（按固定清单打包，**不含 watchlist.json**）
+  wheels\                   预先下好的依赖。离线安装用，不依赖这台机器能连 PyPI。
+
+
+步骤
+--------------------------------------------------------------------------------
+  1) 装 Python
+       双击 python-3.8.10-amd64.exe
+       ⚠️ 安装界面里勾上 "Add Python 3.8 to PATH"
+
+       装完开一个 cmd 验证：
+           python --version
+       应显示  Python 3.8.10
+
+       若报缺 api-ms-win-crt-*.dll，先装 KB2999226（Universal C Runtime，
+       Win7 装 Python 3.5+ 的前置条件）。
+
+  2) 解压源码
+       把 ytmon-<日期>.zip 解压到例如  C:\ytmon-src\
+
+       解压后确认这个文件存在：
+           C:\ytmon-src\ytmon\__init__.py
+       看不到 ytmon 这个**目录**（不是文件）就是没解压对 ——
+       常见原因是多套了一层目录，或者文件没解全。
+
+  3) 离线装依赖
+           cd /d C:\ytmon-src
+           python -m pip install --no-index --find-links=wheels -r requirements-win7.txt
+
+       --no-index 表示完全不访问网络。
+
+  4) 改配置
+       把 watchlist.example.json 复制成 watchlist.json，编辑 targets。
+
+  5) 自检 + 跑一轮
+           python tools\env_check.py
+           python run_monitor.py
+
+
+想在这条路线上也跑图形界面（可选）
+--------------------------------------------------------------------------------
+      python -m pip install -r requirements-win7-gui.txt
+      python gui\app.py
+
+  ⚠️ 这一步需要能连 PyPI（Qt 运行时约 137 MB，本目录没有预下载）。
+     连不上就直接用冻结的 ytmon-gui.exe —— 那才是主路线。
+
+
+为什么依赖要预先下好
+--------------------------------------------------------------------------------
+  Win7 的 TLS 栈和根证书库都很旧，pip 直连 PyPI 经常连证书都握不上手，
+  报出来的还是 `SSLError` 之类跟"装不上包"看起来无关的错。
+  离线安装（上面的 --no-index）把这一环整个绕开。
+
+
+如果非要在现场联网装包：注意"代理"这个坑
+--------------------------------------------------------------------------------
+  如果报的是这种：
+
+      ProxyError('Cannot connect to proxy.', FileNotFoundError(2, ...))
+
+  那**不是**网络不通，而是 Windows 在注册表里配了一个已经失效的代理
+  （`HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings`），
+  pip 会去连它然后连不上。浏览器里"局域网设置"关掉代理，或者改用离线安装。
+
+  ⚠️ `pip --proxy ""` 没用（它仍然会读注册表）。真要绕过就设环境变量：
+
+      set no_proxy=*
+      set NO_PROXY=*
+
+  再执行 pip 命令。
