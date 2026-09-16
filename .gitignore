@@ -33,3 +33,6 @@ dist/
 
 # 本地临时目录（测试与探测用）
 .tmp/
+
+# 本地便携工具链（Python 3.8.10 + PySide2，用于 Win7 交付构建；可随时删除重建）
+.toolchain/
