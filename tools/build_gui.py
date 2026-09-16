@@ -38,6 +38,7 @@ from __future__ import annotations
 import argparse
 import os
 import pathlib
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -154,6 +155,26 @@ def dir_size_mb(path: pathlib.Path) -> float:
     return total / (1024.0 * 1024.0)
 
 
+def copy_template_into(out_dir: pathlib.Path) -> str:
+    """把配置模板放进产物目录，返回落点（失败返回空串）。
+
+    冻结后**配置基准就是 exe 所在目录**（见 `ytmon/paths.py`），
+    所以模板必须在它旁边，否则第一次运行只会看到"找不到配置文件"。
+
+    只放模板 `watchlist.example.json`，**不生成** `watchlist.json` ——
+    配置里会有告警通道密钥，构建脚本不该凭空造一份出来。
+    """
+    src = ROOT / "watchlist.example.json"
+    if not src.is_file() or not out_dir.is_dir():
+        return ""
+    dst = out_dir / "watchlist.example.json"
+    try:
+        shutil.copy2(str(src), str(dst))
+    except OSError:
+        return ""
+    return str(dst)
+
+
 def main(argv: "list[str]") -> int:
     ap = argparse.ArgumentParser(description="打包 GUI 成 onedir 程序")
     ap.add_argument("--name", default="ytmon-gui", help="产物名（默认 ytmon-gui）")
@@ -191,8 +212,11 @@ def main(argv: "list[str]") -> int:
     print("[build_gui] 完成：%s" % out)
     if out.is_dir():
         print("[build_gui] 大小：约 %.1f MB" % dir_size_mb(out))
+    tpl = copy_template_into(out)
+    if tpl:
+        print("[build_gui] 已放入配置模板：%s" % pathlib.Path(tpl).name)
     print("[build_gui] 拷到目标机器时**整个文件夹一起拷**，"
-          "配置放在同目录的 watchlist.json。")
+          "然后把 watchlist.example.json 复制成 watchlist.json 填好目标。")
     print("[build_gui] 上 Win7 前请对照 docs/GUI-Win7打包实测.md 第 7 节与 "
           "docs/Win7-实机验证指南.md。")
     return 0

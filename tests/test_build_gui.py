@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import pathlib
 import sys
+import tempfile
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -56,6 +57,30 @@ class TestBuildCommand(unittest.TestCase):
         """app.py 在运行期往 sys.path 插目录，分析期得靠 --paths 才找得到 ytmon / qt_compat。"""
         self.assertIn(str(ROOT), self.cmd)
         self.assertIn(str(ROOT / "gui"), self.cmd)
+
+
+class TestTemplateShipping(unittest.TestCase):
+    """产物目录必须自带配置模板。
+
+    冻结后配置基准是 exe 所在目录，模板不在旁边的话，
+    第一次运行只会看到"找不到配置文件" —— 而 windowed 产物连这句话都看不见。
+    """
+
+    def test_template_is_copied_into_the_output_dir(self):
+        with tempfile.TemporaryDirectory() as d:
+            dst = build_gui.copy_template_into(pathlib.Path(d))
+            self.assertTrue(dst)
+            self.assertTrue(pathlib.Path(dst).is_file())
+            self.assertEqual(pathlib.Path(dst).name, "watchlist.example.json")
+
+    def test_does_not_create_a_real_config(self):
+        """构建脚本不该凭空造出 watchlist.json —— 那里面会有告警通道密钥。"""
+        with tempfile.TemporaryDirectory() as d:
+            build_gui.copy_template_into(pathlib.Path(d))
+            self.assertFalse((pathlib.Path(d) / "watchlist.json").exists())
+
+    def test_missing_output_dir_is_not_fatal(self):
+        self.assertEqual(build_gui.copy_template_into(ROOT / "no-such-dir-ytmon"), "")
 
 
 class TestEnvironmentGuard(unittest.TestCase):

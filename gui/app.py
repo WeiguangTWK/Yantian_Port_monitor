@@ -70,6 +70,8 @@ QApplication = QtWidgets.QApplication
 
 from ytmon import AppConfig, MonitorService                        # noqa: E402
 from ytmon.errors import TokenError                                # noqa: E402
+from ytmon.fatal import (format_exception, report_fatal,           # noqa: E402
+                         stderr_is_lost)
 from ytmon.paths import (anchor_to_app_dir, app_base_dir,          # noqa: E402
                          writable_warning)
 from ytmon.service import (STATUS_CHANGED, STATUS_ERROR,           # noqa: E402
@@ -317,14 +319,24 @@ def main() -> int:
     # （被计划任务拉起时常常是 C:\Windows\System32）。
     # 源码运行时这个调用什么都不做。
     base = anchor_to_app_dir()
+
+    # ⚠️ windowed 产物**没有控制台** —— `print(..., file=sys.stderr)` 等于没说。
+    # 这类启动期失败必须走"落盘 + 弹窗"，否则现场看到的就是"双击没反应"。
+    # 实测教训见 ytmon/fatal.py 的模块文档。
     warn = writable_warning(base)
     if warn:
-        print(warn, file=sys.stderr)
+        report_fatal("程序所在目录不可写", warn, dialog=stderr_is_lost())
 
     try:
         cfg = AppConfig.load(CONFIG_PATH)
     except FileNotFoundError:
-        print(f"找不到 {CONFIG_PATH}，请先复制 watchlist.example.json", file=sys.stderr)
+        report_fatal(
+            "找不到配置文件",
+            "路径：%s\n\n"
+            "请把同目录下的 watchlist.example.json 复制成 watchlist.json，\n"
+            "并把 targets 改成要盯的船名（type=ship）或码头航次（type=voyage）。"
+            % CONFIG_PATH,
+            dialog=stderr_is_lost())
         return 1
 
     app = QApplication(sys.argv)
@@ -334,4 +346,12 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    # 兜住一切启动失败：windowed 产物里连未捕获的异常都是**什么都不显示**。
+    try:
+        raise SystemExit(main())
+    except SystemExit:
+        raise
+    except BaseException as e:                                # noqa: BLE001
+        report_fatal("程序启动失败", format_exception(e),
+                     dialog=stderr_is_lost())
+        raise SystemExit(1)
