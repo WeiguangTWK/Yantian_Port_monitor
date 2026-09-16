@@ -99,11 +99,19 @@ class TestTransferManifest(unittest.TestCase):
             "ytmon/cli.py",
             "run_monitor.py",
             "tools/env_check.py",
-            "tools/renew_token.py",
             "watchlist.example.json",
         ]
         for rel in required:
             self.assertTrue((ROOT / rel).exists(), f"清单里缺文件：{rel}")
+
+
+    def test_historical_and_personal_docs_are_not_delivered(self):
+        from tools.make_bundle import iter_files
+        paths = {path.relative_to(ROOT).as_posix() for path in iter_files(False)}
+        for path in ("RECON-盐田船期.md", "docs/GUI-技术选型与基座.md",
+                     "docs/GUI-Win7打包实测.md", "docs/OpenViking-Codex.md",
+                     "tools/renew_token.py", "tools/watch_token.py", "ytmon/auth.py"):
+            self.assertNotIn(path, paths)
 
 
 class TestSecretScanner(unittest.TestCase):

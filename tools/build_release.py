@@ -87,10 +87,7 @@ TEXT_ASSETS = [
 
 DOCS = [
     "README.md",
-    "RECON-盐田船期.md",
     "docs/Win7-实机验证指南.md",
-    "docs/GUI-Win7打包实测.md",
-    "docs/GUI-技术选型与基座.md",
 ]
 
 MIRROR = "https://pypi.tuna.tsinghua.edu.cn/simple"

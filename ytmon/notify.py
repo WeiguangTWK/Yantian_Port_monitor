@@ -531,8 +531,7 @@ def _ping_safe(url: str) -> tuple[bool, str]:
 
 def _subset(rep: CycleReport, outcomes: list[TargetOutcome]) -> CycleReport:
     return CycleReport(started_at=rep.started_at, finished_at=rep.finished_at,
-                       etb_time=rep.etb_time, outcomes=list(outcomes),
-                       token_status=rep.token_status, token_renewed=rep.token_renewed)
+                       etb_time=rep.etb_time, outcomes=list(outcomes))
 
 
 def _channel_error(kind: str, body: str) -> str:

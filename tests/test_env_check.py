@@ -218,17 +218,17 @@ class TestQueryGetsTheBrowserPath(QuietReportTest):
         captured: dict = {}
 
         class FakeClient:
-            def verify_token(self, **kw):
-                return real.TokenStatus(True, "ok", "探针", 200, 1)
+            def check_query(self, **kw):
+                return real.QueryStatus(True, "ok", "探针", 200, 1)
 
         class FakeHttpClient:
             @classmethod
-            def create(cls, token="", **kwargs):
+            def create(cls, **kwargs):
                 captured.update(kwargs)
                 return FakeClient()
 
         with patch.object(real, "HttpClient", FakeHttpClient):
-            env_check.check_query(self.rep, "", browser)
+            env_check.check_query(self.rep, browser)
         return captured
 
     def test_check_query_forwards_edge_path(self):
@@ -249,7 +249,7 @@ class TestQueryGetsTheBrowserPath(QuietReportTest):
                 raise FileNotFoundError("未找到任何 Chromium 系浏览器")
 
         with patch.object(real, "HttpClient", FakeHttpClient):
-            env_check.check_query(self.rep, "", None)
+            env_check.check_query(self.rep, None)
 
         row = self.rep.rows[-1]
         self.assertEqual(row[1], env_check.FAIL)
@@ -265,14 +265,13 @@ class TestBootstrapCachesCookies(QuietReportTest):
 
         called: dict = {}
 
-        def fake_bootstrap(token="", **kw):
-            called["token"] = token
+        def fake_bootstrap(**kw):
             called.update(kw)
             return {"JSESSIONID": "x", "EO-Bot-Js-Token": "y"}
 
         rep = env_check.Report()
         with patch.object(real, "bootstrap_cookies", fake_bootstrap):
-            ok = env_check.check_bootstrap(rep, r"C:\Supermium\supermium.exe", "")
+            ok = env_check.check_bootstrap(rep, r"C:\Supermium\supermium.exe")
 
         self.assertTrue(ok)
         self.assertEqual(called.get("edge_path"), r"C:\Supermium\supermium.exe",
@@ -282,7 +281,7 @@ class TestBootstrapCachesCookies(QuietReportTest):
 
     def test_no_browser_skips_instead_of_crashing(self):
         rep = env_check.Report()
-        self.assertFalse(env_check.check_bootstrap(rep, None, ""))
+        self.assertFalse(env_check.check_bootstrap(rep, None))
         self.assertEqual(rep.rows[-1][1], env_check.SKIP)
 
 
@@ -291,7 +290,7 @@ class TestCheckQueryIsWired(unittest.TestCase):
 
     def test_main_forwards_browser(self):
         src = (ROOT / "tools" / "env_check.py").read_text("utf-8")
-        self.assertIn("check_query(rep, token, browser)", src,
+        self.assertIn("check_query(rep, browser)", src,
                       "main 里没把 browser 传给 check_query，bug 会原样复现")
 
 

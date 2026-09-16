@@ -1,12 +1,4 @@
-"""CLI 呈现层测试。
-
-这里守的是**命令行输出该让人看见什么** —— 一个很实际的问题：
-日志级别搞错了，用户要么被无用信息淹没，要么错过了真正的问题。
-
-背景：实测发现 GET 预检查在一切正常时也**恒定**报 expired，
-所以那行不带任何信息量，被降到 debug 级别。
-既要默认不刷屏，又要能被 `--verbose` 找回来。
-"""
+"""CLI 日志级别、告警输出与参数契约测试。"""
 
 from __future__ import annotations
 
@@ -33,7 +25,7 @@ def render(handler, *events) -> str:
     return buf.getvalue()
 
 
-LOG_DEBUG = ("log", {"level": "debug", "message": "预检查提示 expired"})
+LOG_DEBUG = ("log", {"level": "debug", "message": "查询响应已解析"})
 LOG_INFO = ("log", {"level": "info", "message": "正在引导 cookie"})
 LOG_WARN = ("log", {"level": "warn", "message": "被 EdgeOne 拦截"})
 LOG_ERROR = ("log", {"level": "error", "message": "查询失败"})
@@ -43,12 +35,12 @@ class TestLogLevels(unittest.TestCase):
 
     def test_debug_hidden_by_default(self):
         out = render(make_event_handler(quiet=False), LOG_DEBUG)
-        self.assertNotIn("expired", out,
+        self.assertNotIn("查询响应已解析", out,
                          "恒定无信息的预检查提示不该默认刷屏")
 
     def test_debug_shown_with_verbose(self):
         out = render(make_event_handler(quiet=False, verbose=True), LOG_DEBUG)
-        self.assertIn("expired", out, "--verbose 要能把它找回来")
+        self.assertIn("查询响应已解析", out, "--verbose 要能把它找回来")
 
     def test_info_shown_by_default(self):
         self.assertIn("引导", render(make_event_handler(quiet=False), LOG_INFO))
@@ -67,7 +59,7 @@ class TestLogLevels(unittest.TestCase):
     def test_verbose_does_not_override_quiet_for_debug(self):
         # --quiet --verbose 同时给：debug 该出来（verbose 是更明确的要求）
         out = render(make_event_handler(quiet=True, verbose=True), LOG_DEBUG)
-        self.assertIn("expired", out)
+        self.assertIn("查询响应已解析", out)
 
 
 class TestAlertEvents(unittest.TestCase):
@@ -79,10 +71,6 @@ class TestAlertEvents(unittest.TestCase):
         self.assertIn("连接被拒绝",
                       render(h, ("alert_sent", {"ok": False,
                                                 "message": "钉钉 发送失败：连接被拒绝"})))
-
-    def test_token_renewed_is_rendered(self):
-        h = make_event_handler(quiet=False)
-        self.assertIn("续期", render(h, ("token_renewed", {"ok": True})))
 
     def test_unknown_event_is_ignored(self):
         # 将来 service 加新事件类型时，旧 CLI 不该崩
@@ -162,6 +150,13 @@ class TestParserContract(unittest.TestCase):
             with self.subTest(flag):
                 args = build_parser().parse_args([flag])   # 不该抛
                 self.assertTrue(getattr(args, flag[2:].replace("-", "_")))
+
+    def test_removed_login_flags_are_rejected(self):
+        for flags in (["--token", "LEGACY"], ["--no-auto-renew"]):
+            with self.subTest(flags=flags):
+                with contextlib.redirect_stderr(io.StringIO()):
+                    with self.assertRaises(SystemExit):
+                        build_parser().parse_args(flags)
 
     def test_defaults(self):
         args = build_parser().parse_args([])

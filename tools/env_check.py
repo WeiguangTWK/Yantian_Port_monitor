@@ -16,7 +16,7 @@
 
 用法：
     python tools/env_check.py
-    python tools/env_check.py --token xxxx
+    python tools/env_check.py --browser C:\Supermium\supermium.exe
     python tools/env_check.py --browser "C:\\Supermium\\supermium.exe"
 """
 
@@ -303,7 +303,7 @@ def check_browser(rep: Report, explicit: str | None) -> str | None:
 # ------------------------------------------------------------------ 8 引导
 
 
-def check_bootstrap(rep: Report, browser: str | None, token: str | None) -> bool:
+def check_bootstrap(rep: Report, browser: str | None) -> bool:
     try:
         from ytmon.http_client import bootstrap_cookies
     except ImportError as e:
@@ -324,7 +324,7 @@ def check_bootstrap(rep: Report, browser: str | None, token: str | None) -> bool
         # 第 9 步发现没缓存 → 回退到**自动探测**浏览器 → Win7 上 Supermium
         # 装在非标准目录 → `FileNotFoundError: 未找到任何 Chromium 系浏览器`。
         # 于是"第 7 步明明传了 --browser"，却在这一步报找不到浏览器。
-        cookies = bootstrap_cookies(token or "", profile_dir=PROFILE_DIR,
+        cookies = bootstrap_cookies(profile_dir=PROFILE_DIR,
                                     edge_path=browser, headless=True,
                                     cache_file=COOKIE_CACHE)
     except Exception as e:                                   # noqa: BLE001
@@ -340,20 +340,8 @@ def check_bootstrap(rep: Report, browser: str | None, token: str | None) -> bool
 # ------------------------------------------------------------ 9 实际查询
 
 
-def check_query(rep: Report, token: str | None,
-                browser: str | None = None) -> None:
-    """最终验收：**真的查一次**。
-
-    为什么不用 GET 判定：实测 `requests` 的 GET 会稳定落到「公共信息服务」首页，
-    而同一个会话的 POST 查询却完全正常。所以页面对不对不是可靠判据 ——
-    唯一可信的信号是查询本身。
-
-    也不需要 token：实测公众查询不带 `loginVerifyCode` 参数都能查。
-
-    `browser` 必须传进来：缓存失效时这里会**重新引导 cookie**，
-    若不带上第 7 步确认过的那条路径，就会退化去自动探测，
-    在 Win7（Supermium 装在非标准目录）上必然失败。
-    """
+def check_query(rep: Report, browser: str | None = None) -> None:
+    """实际 POST 查询检查，复用已引导的 Cookie 和指定浏览器路径。"""
     try:
         from ytmon.http_client import HttpClient
     except ImportError as e:
@@ -361,12 +349,12 @@ def check_query(rep: Report, token: str | None,
         return
 
     try:
-        client = HttpClient.create(token or "", prefer_cache=True,
+        client = HttpClient.create(prefer_cache=True,
                                    profile_dir=PROFILE_DIR,
                                    edge_path=browser,
                                    headless=True,
                                    cache_file=COOKIE_CACHE)
-        st = client.verify_token(probe_ship="MSC")
+        st = client.check_query(probe_ship="MSC")
     except FileNotFoundError as e:
         rep.add("查询", FAIL, f"{e}",
                 "查询这步需要（重新）引导 cookie，但没找到浏览器。"
@@ -374,7 +362,7 @@ def check_query(rep: Report, token: str | None,
         return
     except Exception as e:                                   # noqa: BLE001
         rep.add("查询", FAIL, f"{type(e).__name__}: {e}",
-                "若提示 EdgeOne 挑战，见上一步；否则把完整报错发我")
+                "若提示 EdgeOne 挑战，检查引导步骤；其他错误请保留完整日志排查")
         return
 
     if st.ok:
@@ -414,19 +402,17 @@ def main() -> int:
         pass
 
     ap = argparse.ArgumentParser(description="盐田船期监控 —— 环境自检")
-    ap.add_argument("--token", default=None,
-                    help="可选。实测公众查询不需要 token，一般不用填")
     ap.add_argument("--browser", default=None, help="显式指定浏览器 exe 路径")
     ap.add_argument("--config", default="watchlist.json")
     args = ap.parse_args()
 
-    token = args.token
-    if not token:
+    browser_path = args.browser
+    if not browser_path:
         try:
-            from ytmon.config import AppConfig, resolve_token
-            token = resolve_token(AppConfig.load(args.config), None)
-        except Exception:                                    # noqa: BLE001
-            token = None
+            from ytmon.config import AppConfig
+            browser_path = AppConfig.load(args.config).settings.edge_path
+        except (FileNotFoundError, ValueError):
+            pass
 
     print("=" * 70)
     print(f"  盐田船期监控 · 环境自检   {dt.datetime.now():%Y-%m-%d %H:%M:%S}")
@@ -438,12 +424,12 @@ def main() -> int:
     proto = check_network(rep)
     if proto:
         check_site(rep)
-    browser = check_browser(rep, args.browser)
-    booted = check_bootstrap(rep, browser, token)
+    browser = check_browser(rep, browser_path)
+    booted = check_bootstrap(rep, browser)
     if booted:
         # 必须把 browser 传下去：缓存失效时这一步会重新引导 cookie，
         # 漏传就会退化成自动探测浏览器（Win7 上必然失败）。
-        check_query(rep, token, browser)
+        check_query(rep, browser)
 
     print("-" * 70)
     print(f"  结果：{rep.summary()}")

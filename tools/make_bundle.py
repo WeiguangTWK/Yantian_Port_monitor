@@ -1,14 +1,4 @@
-"""把项目打包成可以直接拷到 Win7 的 zip。
-
-做这件事的原因：手工挑文件很容易漏（比如只复制了 `tools/env_check.py`
-却没带 `ytmon/` 目录，运行时就报 `No module named 'ytmon'`）。
-这个脚本按固定清单打包，并且**在打包后自动扫描压缩包里有没有凭证**。
-
-用法：
-    python tools/make_bundle.py                 # 生成 dist/ytmon-<日期>.zip
-    python tools/make_bundle.py --no-tests      # 不带测试
-    python tools/make_bundle.py --check-only    # 只做凭证扫描，不打包
-"""
+"""按清单生成 Win7 源码交付包，并扫描疑似凭证。"""
 
 from __future__ import annotations
 
@@ -24,7 +14,6 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 # 要打包的路径（相对项目根）。目录会递归收集 .py（以及测试的 fixtures）。
 INCLUDE_FILES = [
     "README.md",
-    "RECON-盐田船期.md",
     "run_monitor.py",
     "watchlist.example.json",
     "requirements.txt",
@@ -38,6 +27,9 @@ INCLUDE_DIRS = ["ytmon", "tools", "gui", "docs"]
 EXCLUDE_NAMES = {"__pycache__", ".recon", ".cache", "state", ".browser_profile",
                  "snapshots", "dist", ".git", ".venv", "venv"}
 # 含真实凭证的文件 —— 即使被 include 命中也要剔除
+DEVELOPMENT_DOCS = {"docs/GUI-技术选型与基座.md", "docs/GUI-Win7打包实测.md",
+                    "docs/OpenViking-Codex.md"}
+
 SECRET_FILES = {"watchlist.json", "cookies.json", "token.txt"}
 
 # 打包后要扫描的敏感形态
@@ -78,6 +70,8 @@ def iter_files(include_tests: bool) -> list[pathlib.Path]:
             if not p.is_file():
                 continue
             if any(part in EXCLUDE_NAMES for part in p.relative_to(ROOT).parts):
+                continue
+            if p.relative_to(ROOT).as_posix() in DEVELOPMENT_DOCS:
                 continue
             if p.name in SECRET_FILES:
                 continue

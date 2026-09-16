@@ -3,17 +3,12 @@
 为什么需要浏览器：站点前面有腾讯 EdgeOne 的 JS 挑战，纯 HTTP 客户端会被降级。
 真实浏览器内核能自动通过，因此用 CDP 驱动本机浏览器。
 
-只依赖标准库 + aiohttp，无需 pip install，也无需下载浏览器。
-
-支持任何 Chromium 系浏览器（Edge / Chrome / Chromium / Supermium…）。
-这一点对 Win7 很关键：Win7 上 Edge 最高只能到 109（已 EOL），
-而 Supermium 是内核跟进到 Chromium 138 的 Win7 可用分支。
+依赖 aiohttp 和本机兼容的 Chromium 系浏览器，不自动下载浏览器。
 """
 
 from __future__ import annotations
 
 import asyncio
-import json
 import pathlib
 import subprocess
 import time
@@ -103,41 +98,6 @@ class CDP:
                 stable = 0
                 last = cur
         raise TimeoutError(f"页面在 {timeout:.0f}s 内未稳定：{url}")
-
-    async def title(self) -> str:
-        return (await self.evaluate("document.title")) or ""
-
-    async def post_form(self, url: str, fields: list[tuple[str, str]]) -> tuple[int, bytes]:
-        """在页面内以同源 fetch 提交表单，按字节取回（避免 charset 被猜错）。"""
-        js = f"""
-        (async () => {{
-          const body = new URLSearchParams({json.dumps(fields, ensure_ascii=False)});
-          const r = await fetch({json.dumps(url)}, {{
-            method: 'POST',
-            headers: {{'Content-Type': 'application/x-www-form-urlencoded'}},
-            body: body.toString(),
-            credentials: 'include'
-          }});
-          const buf = await r.arrayBuffer();
-          const b = new Uint8Array(buf);
-          let s = '';
-          const CH = 8192;
-          for (let i = 0; i < b.length; i += CH) {{
-            s += String.fromCharCode.apply(null, b.subarray(i, i + CH));
-          }}
-          return JSON.stringify({{status: r.status, url: r.url, b64: btoa(s)}});
-        }})()
-        """
-        raw = await self.evaluate(js, await_promise=True)
-        if not raw:
-            raise CDPError("页面内 fetch 未返回数据")
-        import base64
-
-        data = json.loads(raw)
-        return int(data["status"]), base64.b64decode(data["b64"])
-
-
-# ------------------------------------------------------------------ 浏览器生命周期
 
 
 class Browser:

@@ -9,11 +9,9 @@ GUI 会直接绑定这些 dataclass，所以：
 from __future__ import annotations
 
 import json
-import os
 import pathlib
 from dataclasses import asdict, dataclass, field, fields
 
-from .errors import TokenError
 
 VALID_TYPES = ("ship", "voyage")
 DEFAULT_CONFIG_PATH = "watchlist.json"
@@ -27,27 +25,6 @@ URL_CHANNELS = ("webhook", "dingtalk", "wecom", "feishu")
 # 可以作为告警触发条件的状态
 VALID_ALERT_ON = ("changed", "missing", "error", "first")
 DEFAULT_ALERT_ON = ("changed", "missing", "error")
-
-
-def resolve_token(cfg: "AppConfig", cli_token: str | None = None,
-                  required: bool = False) -> str:
-    """优先级：命令行 > 环境变量 YT_TOKEN > 配置文件。
-
-    **token 是可选的。** 实测证明公众船期查询不需要 token
-    （连不带 `loginVerifyCode` 参数都能查，见 RECON 文档 2.4 节），
-    所以找不到就返回空串，除非调用方明确 `required=True`。
-
-    保留优先级是为了兼容"确实想指定某个 token"的场景。
-    """
-    for candidate in (cli_token, os.environ.get("YT_TOKEN")):
-        if candidate and candidate.strip():
-            return candidate.strip()
-    cfg_token = (cfg.token or "").strip()
-    if cfg_token:
-        return cfg_token
-    if required:
-        raise TokenError("未提供 token：请设置环境变量 YT_TOKEN，或用 --token 传入")
-    return ""
 
 
 @dataclass
@@ -86,10 +63,6 @@ class Settings:
     watch_interval_seconds: int = 600        # 循环监控间隔，GUI 用
 
     # ---- 抗抖动 ----
-    # 预检查默认关闭：它每轮多打一次站点，而实测它**恒报 expired**、信息量为零。
-    # 它原本的"早停"作用已由"第一个目标失败就跳过剩余目标"覆盖，且零额外请求。
-    # 只在排障时打开。
-    precheck: bool = False
     # 被限流（HTTP 567/429/503）时的退避重试次数。**不会**触发浏览器重引导。
     retry_attempts: int = 2
     retry_backoff_seconds: float = 20.0
@@ -262,7 +235,6 @@ def _channel_to_dict(c: NotifyChannel) -> dict:
 
 @dataclass
 class AppConfig:
-    token: str = ""
     targets: list[Target] = field(default_factory=list)
     settings: Settings = field(default_factory=Settings)
     notify: list[NotifyChannel] = field(default_factory=list)
@@ -292,6 +264,8 @@ class AppConfig:
         s = Settings()
         unknown_settings = []
         for k, v in (raw.get("settings") or {}).items():
+            if k == "precheck":
+                continue  # 旧配置兼容；GET 预检查已移除。
             if hasattr(s, k):
                 setattr(s, k, v)
             elif not k.startswith("_"):
@@ -312,7 +286,7 @@ class AppConfig:
                                if k not in _CHANNEL_FIELDS and not k.startswith("_")]
             notify.append(ch)
 
-        return cls(token=raw.get("token", ""), targets=targets,
+        return cls(targets=targets,
                    settings=s, notify=notify, path=p)
 
     def to_dict(self) -> dict:
@@ -320,7 +294,7 @@ class AppConfig:
         # 去掉内部记账字段（unknown_keys），它不该被写回文件。
         settings_d = {k: v for k, v in asdict(self.settings).items()
                       if k not in _INTERNAL_FIELDS}
-        out = {"token": self.token, "targets": [], "settings": settings_d}
+        out = {"targets": [], "settings": settings_d}
         for t in self.targets:
             item = {"type": t.type, "value": t.value}
             if t.label:
@@ -363,12 +337,12 @@ class AppConfig:
         if self.settings.unknown_keys:
             errs.append(f"settings 里有无法识别的设置项："
                         f"{', '.join(self.settings.unknown_keys)}"
-                        f"（可能是拼写错误，这些项**不会生效**）")
+                        f"（可能是拼写错误，这些项不会生效）")
         for i, c in enumerate(self.notify, 1):
             if c.unknown_keys:
                 errs.append(f"第 {i} 个告警通道有无法识别的字段："
                             f"{', '.join(c.unknown_keys)}"
-                            f"（可能是拼写错误，这些字段**不会生效**）")
+                            f"（可能是拼写错误，这些字段不会生效）")
         return errs
 
     def validate_targets(self) -> list[str]:

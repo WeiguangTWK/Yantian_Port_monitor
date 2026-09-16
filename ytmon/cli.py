@@ -1,8 +1,4 @@
-"""命令行入口 —— 纯呈现层。
-
-所有编排逻辑都在 `ytmon.service.MonitorService` 里；这里只负责
-把结构化结果渲染成人类可读的文本。将来的 GUI 会复用同一个 service。
-"""
+"""命令行查询、循环监控及通知编排。"""
 
 from __future__ import annotations
 
@@ -12,8 +8,7 @@ import random
 import sys
 import time
 
-from .config import DEFAULT_CONFIG_PATH, AppConfig, resolve_token
-from .errors import TokenError
+from .config import DEFAULT_CONFIG_PATH, AppConfig
 from .matching import MATCH_FUZZY
 from .notify import Notifier, describe, test_message
 from .service import (STATUS_CHANGED, STATUS_ERROR, STATUS_FIRST,
@@ -22,7 +17,6 @@ from .service import (STATUS_CHANGED, STATUS_ERROR, STATUS_FIRST,
 
 EXIT_OK = 0
 EXIT_ERROR = 1
-EXIT_TOKEN = 2
 EXIT_QUERY = 3
 EXIT_CHANGED = 10          # 有变更：供计划任务/监控系统触发告警
 
@@ -79,16 +73,7 @@ def render_report(rep: CycleReport) -> None:
 
 
 def make_event_handler(quiet: bool, verbose: bool = False):
-    """把 service 的事件渲染到终端。
-
-    没有这个的话，service 层所有日志（含"正在自动续期"）都会被静默丢弃——
-    这是之前真实存在的一个可观测性缺口。
-
-    级别策略：
-        debug  仅在 --verbose 时显示（例如那条恒定无信息的预检查提示）
-        info   默认显示，--quiet 时隐藏
-        warn/error  永远显示
-    """
+    """按 quiet 和 verbose 设置显示事件日志。"""
     def handler(kind: str, payload: dict) -> None:
         if kind == "log":
             level = payload.get("level", "info")
@@ -98,9 +83,6 @@ def make_event_handler(quiet: bool, verbose: bool = False):
             if quiet and level == "info":
                 return
             emit(f"        {message}")
-        elif kind == "token_renewed":
-            emit("        " + ("token 已自动续期" if payload.get("ok")
-                               else "token 自动续期未成功"))
         elif kind == "alert_sent":
             if payload.get("ok"):
                 emit(f"        [告警] 已发出 → {payload.get('channel')}")
@@ -126,11 +108,7 @@ def build_notifier(cfg: AppConfig, args) -> Notifier | None:
 
 
 def run_test_alert(cfg: AppConfig, args) -> int:
-    """把测试消息发给每个启用通道，逐条报告成败。
-
-    这是上真机前最该先做的一步：通道通不通，比监控逻辑本身更容易出问题
-    （内网代理、机器人被踢、SMTP 端口被封……）。
-    """
+    """向启用通道发送测试消息并报告结果。"""
     channels = cfg.enabled_channels
     if not channels:
         emit("没有配置任何启用的告警通道（watchlist.json 里的 notify 段是空的）。")
@@ -158,7 +136,6 @@ def run_test_alert(cfg: AppConfig, args) -> int:
 
 
 def run_once(cfg: AppConfig, args) -> int:
-    cfg.token = resolve_token(cfg, args.token)
     handler = _handler_for(args)
     service = MonitorService(cfg, on_event=handler, dump_dir=args.dump_html)
     notifier = build_notifier(cfg, args)
@@ -166,14 +143,7 @@ def run_once(cfg: AppConfig, args) -> int:
     emit(f"—— 船期监控 {dt.datetime.now():%Y-%m-%d %H:%M:%S} "
          f"| 目标 {len(cfg.enabled_targets)} 个 ——")
 
-    rep = service.run_cycle(etb_time=args.etb_time,
-                            auto_renew=not args.no_auto_renew)
-
-    # 没有产出任何目标结果 = 预检查就中止了（WAF/网络）
-    if not rep.outcomes and rep.token_status and not rep.token_status.ok:
-        emit(f"[错误] 预检查未通过（{rep.token_status.reason}）："
-             f"{rep.token_status.detail}")
-        return EXIT_TOKEN
+    rep = service.run_cycle(etb_time=args.etb_time)
 
     # 告警独立于终端输出：quiet 只影响屏幕，不影响有没有人收到通知
     if notifier is not None:
@@ -195,7 +165,7 @@ def run_once(cfg: AppConfig, args) -> int:
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="ytmon",
-        description="盐田码头船期监控：盯住特定船/码头航次，ETB/ETD 一变就告警。",
+        description="按船名或码头航次监控船期变更。",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""示例：
   python run_monitor.py                          # 按 watchlist.json 跑一轮
@@ -204,21 +174,18 @@ def build_parser() -> argparse.ArgumentParser:
   python run_monitor.py --test-alert             # 先测告警通道通不通
   python run_monitor.py --no-notify              # 这轮不发告警
 
-退出码：0=无变更  10=有变更  1=错误  2=token 失效  3=查询失败
+退出码：0=无变更  10=有变更  1=错误  3=查询失败
 """)
     p.add_argument("--config", default=DEFAULT_CONFIG_PATH)
-    p.add_argument("--token", default=None, help="查询令牌（优先用环境变量 YT_TOKEN）")
     p.add_argument("--etb-time", default=None, help="查询起始日 YYYYMMDD（默认 今天-N 天）")
     p.add_argument("--watch", type=int, default=0, metavar="秒",
                    help="循环监控，每 N 秒一轮；不填只跑一轮")
     p.add_argument("--quiet", action="store_true", help="只输出变更与异常")
     p.add_argument("--verbose", action="store_true",
-                   help="连调试信息一起输出（例如那条恒定无信息的预检查提示）")
+                   help="显示调试信息")
     p.add_argument("--show-browser", action="store_true", help="引导 cookie 时显示浏览器窗口")
-    p.add_argument("--no-auto-renew", action="store_true",
-                   help="token 失效时不自动续期（默认会自动续期一次）")
     p.add_argument("--dump-html", default=None, metavar="目录",
-                   help="存原始 HTML 供复核（当前版本的 service 不产出，保留参数）")
+                   help="保存首分页 HTML 快照供复核")
     p.add_argument("--no-notify", action="store_true",
                    help="本轮不发告警（即使 watchlist.json 里配了通道）")
     p.add_argument("--test-alert", action="store_true",
@@ -278,11 +245,7 @@ def main(argv: list[str] | None = None) -> int:
         cfg.settings.headless = False
 
     if args.watch <= 0:
-        try:
-            return run_once(cfg, args)
-        except TokenError as e:
-            print(f"[致命] {e}", file=sys.stderr)
-            return EXIT_TOKEN
+        return run_once(cfg, args)
 
     emit(f"进入循环监控，每 {args.watch} 秒一轮（Ctrl+C 退出）")
     jitter_max = float(getattr(cfg.settings, "watch_jitter_seconds", 0) or 0)
@@ -292,14 +255,9 @@ def main(argv: list[str] | None = None) -> int:
     while True:
         started = dt.datetime.now()
         try:
-            code = run_once(cfg, args)
-        except TokenError as e:
-            emit(f"[致命] {e}")
-            return EXIT_TOKEN
+            run_once(cfg, args)
         except KeyboardInterrupt:
             return EXIT_OK
-        if code == EXIT_TOKEN:
-            return code
         elapsed = (dt.datetime.now() - started).total_seconds()
         # 抖动不是装饰：固定间隔 + 计划任务很容易和站点限流窗口对齐，
         # 每次都撞在同一个相位上，看起来更像爬虫。

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import pathlib
 import sys
 import tempfile
@@ -11,10 +10,8 @@ import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from ytmon.auth import _is_logged_in_html, mask          # noqa: E402
-from ytmon.config import AppConfig, Settings, Target, resolve_token  # noqa: E402
-from ytmon.errors import TokenError                      # noqa: E402
-from ytmon.http_client import (HttpClient, TokenStatus,  # noqa: E402
+from ytmon.config import AppConfig, Settings, Target  # noqa: E402
+from ytmon.http_client import (HttpClient,  # noqa: E402
                                load_cached_cookies, save_cookies)
 
 FIX = pathlib.Path(__file__).parent / "fixtures"
@@ -70,8 +67,7 @@ REAL_QUERY_HTML = (
     "</form></body></html>"
 )
 
-# 「公共信息服务」首页 —— 注意它**也含有**「船期公众查询」这几个字（作为链接文本），
-# 这正是 check_token 原先误判的根源。
+# 首页的查询链接不能视为查询结果。
 PUBLIC_INFO_HTML = (
     '<html><head><title>公共信息服务</title></head><body>'
     '<a href="/pqs_revision/pages/jsp/voyQuery.jsp?loginVerifyCode=">'
@@ -79,64 +75,46 @@ PUBLIC_INFO_HTML = (
 )
 
 
-class TestCheckToken(unittest.TestCase):
-    """check_token 的分类是整套监控的判据，必须有测试守住。"""
+class TestCheckQuery(unittest.TestCase):
+    def _client(self, response):
+        client = HttpClient({"EO-Bot-Js-Token": "x"})
+        client.session = FakeSession(response)
+        return client
 
-    def _client(self, response) -> HttpClient:
-        c = HttpClient("dummy-token", {"EO-Bot-Js-Token": "x"})
-        c.session = FakeSession(response)          # type: ignore[assignment]
-        return c
+    def test_valid_uses_post(self):
+        html = (FIX / "voy_result_ever.html").read_text("utf-8")
+        client = self._client(FakeResponse(html))
+        self.assertTrue(client.check_query().ok)
+        self.assertEqual([method for method, _ in client.session.calls], ["POST"])
 
-    def test_valid(self):
-        st = self._client(FakeResponse(REAL_QUERY_HTML)).check_token()
-        self.assertTrue(st.ok)
-        self.assertEqual(st.reason, "ok")
-        self.assertFalse(st.expired)
+    def test_home_is_not_a_result(self):
+        status = self._client(FakeResponse(PUBLIC_INFO_HTML)).check_query()
+        self.assertFalse(status.ok)
+        self.assertEqual(status.reason, "expired")
 
-    def test_index_page_is_not_mistaken_for_query_page(self):
-        """回归守卫：首页里也有「船期公众查询」这个链接文本。
+    def test_waf_is_distinguished(self):
+        status = self._client(FakeResponse(WAF_HTML)).check_query()
+        self.assertEqual(status.reason, "waf")
 
-        旧实现用 `'船期公众查询' in text` 判断，于是**被弹回首页也会报"有效"**。
-        现在改用查询表单的特有字段，必须判为 expired。
-        """
-        st = self._client(FakeResponse(
-            PUBLIC_INFO_HTML,
-            url="https://www.156yt.cn/pqs_revision/pages/jsp/voyQuery.jsp")).check_token()
-        self.assertFalse(st.ok, "首页含'船期公众查询'字样，但绝不能判为有效")
-        self.assertEqual(st.reason, "expired")
+    def test_rate_limit_is_distinguished(self):
+        for code in (429, 503, 567):
+            with self.subTest(code=code):
+                status = self._client(FakeResponse("", code)).check_query()
+                self.assertEqual(status.reason, "ratelimited")
 
-    def test_waf_is_not_token_expiry(self):
-        # 关键：cookie 过期导致的 WAF 拦截 ≠ token 过期。
-        # 若混为一谈，就会把"重新引导一下就好"误报成"token 死了"。
-        st = self._client(FakeResponse(WAF_HTML)).check_token()
-        self.assertFalse(st.ok)
-        self.assertEqual(st.reason, "waf")
-        self.assertNotEqual(st.reason, "expired")
+    def test_http_error_is_query_failure(self):
+        status = self._client(FakeResponse("", 500)).check_query()
+        self.assertEqual(status.reason, "query")
 
-    def test_bounced_to_home_is_expired(self):
-        st = self._client(FakeResponse(
-            PUBLIC_INFO_HTML,
-            url="https://www.156yt.cn/publicInfoService/index.action")).check_token()
-        self.assertFalse(st.ok)
-        self.assertEqual(st.reason, "expired")
-
-    def test_network_error_is_not_expiry(self):
+    def test_network_error_propagates(self):
+        import requests
         class Boom(FakeSession):
-            def get(self, url, **kw):
-                import requests
+            def post(self, url, **kw):
                 raise requests.ConnectionError("boom")
-
-        c = HttpClient("dummy", {"EO-Bot-Js-Token": "x"})
-        c.session = Boom(None)                     # type: ignore[assignment]
-        st = c.check_token()
-        self.assertFalse(st.ok)
-        self.assertEqual(st.reason, "network")
-        self.assertFalse(st.expired, "网络错误绝不能被当成 token 过期")
-
-    def test_describe_never_leaks_token(self):
-        c = self._client(FakeResponse(REAL_QUERY_HTML))
-        text = c.check_token().describe()
-        self.assertNotIn("dummy-token", text)
+        client = self._client(FakeResponse(""))
+        client.session = Boom(None)
+        with self.assertRaises(requests.ConnectionError):
+            client.check_query()
 
 
 class TestConfig(unittest.TestCase):
@@ -198,38 +176,21 @@ class TestConfig(unittest.TestCase):
                                  Target("ship", "B SHIP", enabled=False)])
         self.assertEqual([t.value for t in cfg.enabled_targets], ["A SHIP"])
 
-    def test_resolve_token_priority(self):
-        cfg = AppConfig(token="from-config")
-        old = os.environ.pop("YT_TOKEN", None)
-        try:
-            self.assertEqual(resolve_token(cfg, "from-cli"), "from-cli")
-            self.assertEqual(resolve_token(cfg, None), "from-config")
-            os.environ["YT_TOKEN"] = "from-env"
-            self.assertEqual(resolve_token(cfg, None), "from-env")
-            os.environ["YT_TOKEN"] = "   "
-            self.assertEqual(resolve_token(cfg, None), "from-config")
-        finally:
-            os.environ.pop("YT_TOKEN", None)
-            if old is not None:
-                os.environ["YT_TOKEN"] = old
-
-    def test_resolve_token_optional_by_default(self):
-        """token 现在是可选的 —— 实测公众查询不需要它（连参数都不带也能查）。"""
-        old = os.environ.pop("YT_TOKEN", None)
-        try:
-            self.assertEqual(resolve_token(AppConfig(), None), "")
-        finally:
-            if old is not None:
-                os.environ["YT_TOKEN"] = old
-
-    def test_resolve_token_raises_only_when_required(self):
-        old = os.environ.pop("YT_TOKEN", None)
-        try:
-            with self.assertRaises(TokenError):
-                resolve_token(AppConfig(), None, required=True)
-        finally:
-            if old is not None:
-                os.environ["YT_TOKEN"] = old
+    def test_legacy_login_fields_are_ignored_and_not_saved(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = pathlib.Path(directory) / "w.json"
+            path.write_text(json.dumps({
+                "token": "LEGACY",
+                "settings": {"precheck": True},
+                "targets": ["MSC IRINA"],
+            }), "utf-8")
+            config = AppConfig.load(path)
+            self.assertFalse(hasattr(config, "token"))
+            self.assertFalse(hasattr(config.settings, "precheck"))
+            config.save()
+            saved = json.loads(path.read_text("utf-8"))
+            self.assertNotIn("token", saved)
+            self.assertNotIn("precheck", saved["settings"])
 
 
 class TestCookieCache(unittest.TestCase):
@@ -257,18 +218,6 @@ class TestCookieCache(unittest.TestCase):
             f = pathlib.Path(d) / "c.json"
             f.write_text("{not json", "utf-8")
             self.assertIsNone(load_cached_cookies(str(f)))
-
-
-class TestAuthHelpers(unittest.TestCase):
-    def test_detect_logged_in(self):
-        self.assertTrue(_is_logged_in_html('<input value="true" id="isLogin">'))
-        self.assertFalse(_is_logged_in_html('<input value="false" id="isLogin">'))
-        self.assertFalse(_is_logged_in_html("<html>nothing</html>"))
-
-    def test_mask_hides_username(self):
-        self.assertNotIn("secretuser", mask("secretuser"))
-        self.assertEqual(mask(""), "(空)")
-        self.assertTrue(mask("ab").startswith("a"))
 
 
 if __name__ == "__main__":

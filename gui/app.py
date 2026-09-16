@@ -1,20 +1,4 @@
-"""GUI 骨架（PySide2 / Qt 5.15 + Fluent-Widgets）。
-
-绑定由 `qt_compat` 决定：**PySide2 优先**（交付目标，Win7 → Win11 都能跑）；
-PySide6 / Qt 6 是遗留分支（Qt 6 不支持 Win7）。界面代码只写一套。
-
-状态（2026-09-16）：已在 Python 3.8 + PySide2 上**实测跑通** ——
-离屏与真桌面都能构造并渲染主窗口，也能用 PyInstaller 冻结后运行。
-见 `docs/GUI-Win7打包实测.md`。
-
-为什么先写它：GUI 最容易写错的不是界面，而是
-「不要在 worker 线程里碰控件」。这里把正确模式固化下来 ——
-`MonitorService` 在 QThread 里跑，事件通过 signal 回到 UI 线程。
-
-运行：
-    pip install -r requirements-win7-gui.txt
-    python gui/app.py
-"""
+"""船期监控面板。查询在 QThread 中执行，通过信号更新界面。"""
 
 from __future__ import annotations
 
@@ -42,22 +26,12 @@ except ImportError as e:                                      # pragma: no cover
 try:
     from qfluentwidgets import (BodyLabel, CardWidget, FluentWindow,
                                 InfoBar, InfoBarPosition, NavigationItemPosition,
-                                PrimaryPushButton, ProgressBar, PushButton,
+                                PrimaryPushButton, ProgressBar,
                                 SubtitleLabel, TextEdit)
 except ImportError as e:                                      # pragma: no cover
-    # ⚠️ 不要把原因说错：这个 ImportError 有两种来源，而它们的**修法相反**。
-    # 这里曾经一律打印"请安装 qfluentwidgets"，结果打包后报
-    # No module named 'win32com' 时把人引向"去装包"，方向完全错。
-    print(f"导入 qfluentwidgets 失败，原始错误：{e}\n"
-          "\n"
-          "先看上面那行原始错误 —— 它才是原因。两种常见情况：\n"
-          "  * 环境里确实没装 qfluentwidgets：\n"
-          "        pip install -r requirements-win7-gui.txt\n"
-          "  * **只有打包后的 exe 报错**（典型：No module named 'win32com'）：\n"
-          "        那是冻结包漏收了隐藏导入，**不是没装包** ——\n"
-          "        去补 --collect-submodules win32comext 等，\n"
-          "        见 docs/GUI-Win7打包实测.md §5.1",
-          file=sys.stderr)
+    print(f"界面组件加载失败：{e}\n"
+          "源码运行请检查 requirements-win7-gui.txt；"
+          "冻结程序请检查组件是否完整。", file=sys.stderr)
     raise SystemExit(2)
 
 # 从兼容层统一取控件类（两套绑定通用）
@@ -69,7 +43,6 @@ QTableWidgetItem = QtWidgets.QTableWidgetItem
 QApplication = QtWidgets.QApplication
 
 from ytmon import AppConfig, MonitorService                        # noqa: E402
-from ytmon.errors import TokenError                                # noqa: E402
 from ytmon.fatal import (format_exception, report_fatal,           # noqa: E402
                          stderr_is_lost)
 from ytmon.paths import (anchor_to_app_dir, app_base_dir,          # noqa: E402
@@ -106,23 +79,15 @@ class MonitorWorker(QThread):
     finished_ok = Signal(object)       # CycleReport
     failed = Signal(str)
 
-    def __init__(self, cfg: AppConfig, action: str = "cycle", parent=None):
+    def __init__(self, cfg: AppConfig, parent=None):
         super().__init__(parent)
         self.cfg = cfg
-        self.action = action
 
     def run(self) -> None:                                     # noqa: D102
         try:
             svc = MonitorService(self.cfg, on_event=self._on_event,
                                  dump_dir="snapshots")
-            if self.action == "token":
-                self.finished_ok.emit(svc.check_token())
-            elif self.action == "renew":
-                self.finished_ok.emit(svc.renew_token())
-            else:
-                self.finished_ok.emit(svc.run_cycle())
-        except TokenError as e:
-            self.failed.emit(f"token 失效：{e}")
+            self.finished_ok.emit(svc.run_cycle())
         except Exception as e:                                 # noqa: BLE001
             self.failed.emit(f"{type(e).__name__}: {e}\n"
                              f"{traceback.format_exc()[-600:]}")
@@ -148,22 +113,17 @@ class MonitorPage(QWidget):
         root.setSpacing(12)
 
         root.addWidget(SubtitleLabel("船期监控", self))
-        self.hint = BodyLabel("盯住特定船 / 码头航次，ETB·ETD 一变就告警。", self)
+        self.hint = BodyLabel("按船名或码头航次查看查询结果和船期变更。", self)
         root.addWidget(self.hint)
 
         # --- 按钮行 ---
         bar = QHBoxLayout()
         self.btn_run = PrimaryPushButton("立即检查", self)
-        self.btn_token = PushButton("Token 体检", self)
-        self.btn_renew = PushButton("续期 Token", self)
-        for b in (self.btn_run, self.btn_token, self.btn_renew):
-            bar.addWidget(b)
+        bar.addWidget(self.btn_run)
         bar.addStretch(1)
         root.addLayout(bar)
 
-        self.btn_run.clicked.connect(lambda: self._start("cycle"))
-        self.btn_token.clicked.connect(lambda: self._start("token"))
-        self.btn_renew.clicked.connect(lambda: self._start("renew"))
+        self.btn_run.clicked.connect(self._start)
 
         self.progress = ProgressBar(self)
         self.progress.setValue(0)
@@ -209,7 +169,7 @@ class MonitorPage(QWidget):
 
     # ---------------------------------------------------------- 运行
 
-    def _start(self, action: str) -> None:
+    def _start(self) -> None:
         if self.worker and self.worker.isRunning():
             self.append_log("[skip] 上一轮还没跑完")
             return
@@ -226,11 +186,10 @@ class MonitorPage(QWidget):
             return
 
         self.progress.setValue(0)
-        self.append_log(f"—— 开始 {action} ——")
-        for b in (self.btn_run, self.btn_token, self.btn_renew):
-            b.setEnabled(False)
+        self.append_log("开始检查船期")
+        self.btn_run.setEnabled(False)
 
-        self.worker = MonitorWorker(self.cfg, action, self)
+        self.worker = MonitorWorker(self.cfg, self)
         self.worker.event.connect(self._on_event)
         self.worker.finished_ok.connect(self._on_done)
         self.worker.failed.connect(self._on_failed)
@@ -256,35 +215,21 @@ class MonitorPage(QWidget):
                 for v in o.voyages:
                     for c in o.changes.get(v.voyage_code, []):
                         self.append_log(f"      · {c.describe()}")
-        elif kind == "token_status":
-            st = payload["status"]
-            self.append_log(f"token 体检：{st.describe()}")
         elif kind == "log":
             self.append_log(f"    {payload.get('message')}")
 
     def _on_done(self, result) -> None:
-        # 三种 action 返回不同类型，分别处理
-        if hasattr(result, "summary_line"):                    # CycleReport
-            self.append_log(f"—— 本轮结束：{result.summary_line()} ——")
-            if result.has_changes:
-                self._toast("发现船期变更", result.summary_line())
-            self.refresh_table()
-        elif hasattr(result, "reason"):                        # TokenStatus
-            st = result
-            self._toast("Token 体检", st.describe(), error=not st.ok)
-        else:                                                  # RenewResult
-            ok = getattr(result, "ok", False)
-            self._toast("续期结果", getattr(result, "detail", str(result)), error=not ok)
-            if ok:
-                self.cfg.save()
+        self.append_log(f"检查完成：{result.summary_line()}")
+        if result.has_changes:
+            self._toast("船期变更", result.summary_line())
+        self.refresh_table()
 
     def _on_failed(self, message: str) -> None:
         self.append_log(f"[错误] {message}")
         self._toast("执行失败", message[:200], error=True)
 
     def _on_thread_finished(self) -> None:
-        for b in (self.btn_run, self.btn_token, self.btn_renew):
-            b.setEnabled(True)
+        self.btn_run.setEnabled(True)
 
     # ---------------------------------------------------------- 小工具
 

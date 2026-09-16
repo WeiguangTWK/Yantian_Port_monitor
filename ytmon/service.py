@@ -1,14 +1,4 @@
-"""服务层：UI 无关的编排逻辑。
-
-这一层是 GUI 的基座 —— 它**不做任何打印**，只返回结构化结果，
-并通过 `on_event` 回调把进度抛给调用方。
-
-  * CLI  → 把事件和结果渲染成文本
-  * GUI  → 把事件推到进度条/日志面板，把结果绑到表格
-
-所有方法都是同步的，GUI 请在 worker 线程里调用（不要阻塞 UI 线程），
-因为内部会做网络请求，首次还会拉起一次浏览器做 cookie 引导。
-"""
+"""UI 无关的同步监控服务。通过事件回调上报进度，GUI 应在工作线程调用。"""
 
 from __future__ import annotations
 
@@ -20,13 +10,12 @@ import traceback
 from dataclasses import dataclass, field
 from typing import Callable
 
-from .auth import Authenticator, RenewResult, load_credentials
 from .config import AppConfig, Target
 from .errors import RateLimited
-from .http_client import (HttpClient, SessionExpired, TokenStatus,
+from .http_client import (HttpClient, SessionExpired,
                           bootstrap_cookies, is_fatal_error,
                           load_cached_cookies)
-from .matching import MATCH_FUZZY, MATCH_NONE, match_rows
+from .matching import MATCH_NONE, match_rows
 from .parse import Voyage
 from .store import FieldChange, StateStore, compare, target_key
 
@@ -45,11 +34,6 @@ STATUS_LABEL = {
     STATUS_MISSING: "未查到",
     STATUS_ERROR: "错误",
 }
-
-# 预检查（settings.precheck，默认关闭）里"必然导致后续也失败"的原因。
-# 只用于决定要不要提前中止；正常路径不依赖它。
-FATAL_REASONS = ("waf", "network", "ratelimited")
-
 
 @dataclass
 class TargetOutcome:
@@ -78,8 +62,6 @@ class CycleReport:
     finished_at: str
     etb_time: str
     outcomes: list[TargetOutcome]
-    token_status: TokenStatus | None = None
-    token_renewed: bool = False
 
     @property
     def counts(self) -> dict[str, int]:
@@ -114,9 +96,6 @@ class MonitorService:
         self.on_event = on_event or (lambda kind, payload: None)
         self.dump_dir = dump_dir
         self._client: HttpClient | None = None
-        # 记下"配置里原本有没有 token"，决定续期后要不要写回文件
-        self._config_had_token = bool((cfg.token or "").strip())
-        self._auto_renew = True
         # 被限流时的重试次数（退避后才重试，且**不会**重新引导 cookie）
         self._retries = max(0, int(getattr(cfg.settings, "retry_attempts", 1)))
 
@@ -133,10 +112,6 @@ class MonitorService:
 
     # ------------------------------------------------------------ 会话
 
-    @property
-    def token(self) -> str:
-        return (self.cfg.token or "").strip()
-
     def _boot_kwargs(self) -> dict:
         s = self.cfg.settings
         return {
@@ -149,74 +124,22 @@ class MonitorService:
     def _new_http_client(self, cookies: dict[str, str]) -> HttpClient:
         # 注意：profile_dir/edge_path/headless 是给"重新引导"用的，
         # 必须通过 boot= 传，不能直接当构造参数。
-        return HttpClient(self.token, cookies,
+        return HttpClient(cookies,
                           cache_file=self.cfg.settings.cookie_cache,
                           boot=self._boot_kwargs())
 
     def ensure_client(self, allow_bootstrap: bool = True) -> HttpClient:
-        """确保有一个可用的 HTTP 客户端（cookie 有效）。
-
-        注意：**不要求 token**。公众船期查询不需要 token，
-        真正的门槛是用浏览器过一次 EdgeOne 挑战、拿到 cookie。
-        """
+        """复用查询会话；缓存缺失时引导浏览器 Cookie。"""
         if self._client is None:
             cached = load_cached_cookies(self.cfg.settings.cookie_cache)
             if cached is None:
                 if not allow_bootstrap:
                     raise SessionExpired("cookie 缓存缺失或过期")
-                self._log("cookie 缺失/过期，正在用浏览器引导（首次约 10 秒）…")
-                cached = bootstrap_cookies(self.token, **self._boot_kwargs())
-                self._log(f"cookie 引导完成：{', '.join(cached)}")
+                self._log("正在建立查询会话…")
+                cached = bootstrap_cookies(**self._boot_kwargs())
+                self._log("查询会话已建立")
             self._client = self._new_http_client(cached)
         return self._client
-
-    def check_token(self, rebootstrap_on_waf: bool = True) -> TokenStatus:
-        """**会话级**预检查（不是 token 有效性检查）。
-
-        ⚠️ 它只发一次 GET。实测发现伪造的 token 也会正常返回查询页，
-        所以本方法**判不出 token 是否有效** —— 它只能回答：
-            "cookie/会话还通不通、查询页拿不拿得到"。
-
-        真正需要授权的地方是 POST 查询，因此续期逻辑挂在
-        `_client_call` 的实际失败上，而不是挂在这里的判定结果上。
-        """
-        client = self.ensure_client()
-        st = client.check_token()
-        if st.reason == "waf" and rebootstrap_on_waf:
-            self._log("被 EdgeOne 拦截，重新引导 cookie 后复检…", "warn")
-            try:
-                client.rebootstrap()
-                self._client = client
-                st = client.check_token()
-            except Exception as e:                      # noqa: BLE001
-                return TokenStatus(False, "network", f"重新引导失败：{e}")
-        return st
-
-    def renew_token(self) -> RenewResult:
-        """用账号密码续期 token（两个会话，见 auth 模块说明）。"""
-        creds = load_credentials()
-        if not creds:
-            return RenewResult(False, None,
-                               "没有可用凭证：请设置环境变量 YT_USER / YT_PASS")
-        username, password = creds
-        self._log(f"正在用账号 {username[:2]}*** 续期 token…")
-        try:
-            cookies = load_cached_cookies(self.cfg.settings.cookie_cache)
-            if cookies is None:
-                cookies = bootstrap_cookies(self.token or "x", **self._boot_kwargs())
-            auth = Authenticator.from_cookies(cookies)
-            result = auth.renew(username, password)
-        except Exception as e:                          # noqa: BLE001
-            return RenewResult(False, None, f"续期异常：{type(e).__name__}: {e}")
-
-        if result.ok and result.token:
-            self.cfg.token = result.token
-            # token 变了，旧会话作废，下次会重建
-            self._client = None
-            self._log(result.detail, "info")
-        else:
-            self._log(result.detail, "error")
-        return result
 
     def close(self) -> None:
         self._client = None
@@ -224,16 +147,7 @@ class MonitorService:
     # ------------------------------------------------------------ 抓取
 
     def _client_call(self, fn, *args, **kwargs):
-        """执行一次查询。两层策略刻意分开：
-
-            **限流** → 退避等待后重试（外层）
-            **会话失效** → 重新引导 cookie / 续期 token（内层）
-
-        为什么必须分开：被限流时"重新引导 cookie"是**有害**的 ——
-        起一次浏览器本身就是一串请求，只会把自己推得更深。
-        这两类问题在响应上都表现为"拿回来的不是结果页"，
-        所以必须在状态码那一步就把它们拆开（见 http_client.query_page）。
-        """
+        """限流走退避重试；会话失效重新引导 Cookie。"""
         client = self.ensure_client()
         for attempt in range(self._retries + 1):
             try:
@@ -247,63 +161,22 @@ class MonitorService:
                 time.sleep(wait)
 
     def _call_with_session_heal(self, fn, client, *args, **kwargs):
-        """会话级自愈：重引导 cookie → （可选）续期 token。
-
-        为什么把"续期"放在这里而不是靠预检查：
-            实测发现 `check_token`（只发 GET）**无法判别 token 是否有效** ——
-            伪造 token 也会返回正常的查询页。
-            所以"token 过期"其实不可靠地可观测。与其依赖一个假的探测，
-            不如把续期绑在**真实查询失败**这个可信信号上。
-        """
+        """会话失效后重新引导一次；仍失败则交给下一轮处理。"""
         try:
             return fn(client, *args, **kwargs)
         except SessionExpired as e:
-            self._log(f"会话失效（{e}），重新引导 cookie 后重试…", "warn")
-            cookies = bootstrap_cookies(self.token, **self._boot_kwargs())
+            self._log(f"查询会话失效，正在重新建立（{e}）", "warn")
+            cookies = bootstrap_cookies(**self._boot_kwargs())
             client.set_cookies(cookies)
             self._client = client
-            try:
-                return fn(client, *args, **kwargs)
-            except SessionExpired as e2:
-                if not self._auto_renew:
-                    raise
-                if not self._has_credentials():
-                    # 实测：公众船期查询不需要 token，所以这条自愈路径本来
-                    # 就不是必需的。没配账号时硬走一遍，只会打印出"续期失败"
-                    # 这种看起来像配置错误的假象 —— 实际上这多半是站点临时
-                    # 降级或限流（HTTP 567），下一轮自己就好了。
-                    self._log(f"重新引导后仍失败（{e2}）。未配置账号凭证，"
-                              f"跳过 token 续期（公众查询本就不需要 token）—— "
-                              f"这通常是站点临时降级或限流，下一轮会自行恢复。", "warn")
-                    raise
-                self._log(f"重新引导后仍失败（{e2}），尝试续期 token…", "warn")
-                rr = self.renew_token()
-                if not rr.ok:
-                    self._log(f"续期失败：{rr.detail}", "error")
-                    raise
-                self._persist_token_if_configured()
-                self._client = None
-                return fn(self.ensure_client(), *args, **kwargs)
+            return fn(client, *args, **kwargs)
 
     def _backoff_seconds(self, attempt: int) -> float:
-        """退避时长：指数增长 + 抖动。
-
-        抖动不是装饰 —— 计划任务和 --watch 循环很容易卡在同一个相位上，
-        没有抖动的话每次重试都会同时打到站点，反而更像攻击。
-        """
+        """指数退避，并加入随机抖动。"""
         base = float(self.cfg.settings.retry_backoff_seconds) * (2 ** attempt)
         return base + random.uniform(0, base * 0.5)
 
-    def _has_credentials(self) -> bool:
-        """有没有可用于续期的账号。**只判断存在性，不读取内容。**"""
-        try:
-            return bool(load_credentials())
-        except Exception:                               # noqa: BLE001
-            return False
-
-    def run_cycle(self, etb_time: str | None = None,
-                  auto_renew: bool = True) -> CycleReport:
-        self._auto_renew = auto_renew
+    def run_cycle(self, etb_time: str | None = None) -> CycleReport:
         started = dt.datetime.now()
         s = self.cfg.settings
         etb = etb_time or _default_etb(s.etb_back_days)
@@ -312,29 +185,6 @@ class MonitorService:
 
         targets = self.cfg.enabled_targets
         self._emit("cycle_start", total=len(targets), etb_time=etb)
-
-        # 预检查默认**关闭**。
-        #
-        # 它原本是发一次 GET 来"提前发现 WAF/网络问题"，但实测有两个问题：
-        #   1. 它恒报 expired（连一切正常时也是），信息量为零；
-        #   2. 它每轮都多打一次站点 —— 而限流正是这套系统最大的运行风险。
-        # 收益（早停）已经由下面"第一个目标失败就停"覆盖，且**零额外请求**。
-        # 需要它时（比如排障）把 settings.precheck 设为 true。
-        token_status = None
-        if getattr(s, "precheck", False):
-            token_status = self.check_token()
-            self._emit("token_status", status=token_status)
-            if not token_status.ok and token_status.reason in FATAL_REASONS:
-                self._log(f"预检查失败（{token_status.reason}）：{token_status.detail}",
-                          "error")
-                rep = CycleReport(started.isoformat(timespec="seconds"),
-                                  dt.datetime.now().isoformat(timespec="seconds"),
-                                  etb, outcomes, token_status)
-                self._emit("cycle_done", report=rep)
-                return rep
-            if not token_status.ok:
-                self._log(f"预检查提示 {token_status.reason}（{token_status.detail}）—— "
-                          f"这不是可靠判据，继续实际查询", "debug")
 
         for idx, t in enumerate(targets, 1):
             self._emit("target_start", index=idx, total=len(targets), target=t)
@@ -351,32 +201,11 @@ class MonitorService:
                 break
 
         store.save()
-        # 报告里的 token_status 若只是"预检查可疑"，而实际查询都成功了，
-        # 就该如实反映实际结果 —— 否则报告会自相矛盾。
-        if (token_status is not None and not token_status.ok and outcomes
-                and all(o.status != STATUS_ERROR for o in outcomes)):
-            token_status = TokenStatus(True, "ok",
-                                       f"查询实际成功（预检查提示 {token_status.reason}，已忽略）")
         rep = CycleReport(started.isoformat(timespec="seconds"),
                           dt.datetime.now().isoformat(timespec="seconds"),
-                          etb, outcomes, token_status)
+                          etb, outcomes)
         self._emit("cycle_done", report=rep)
         return rep
-
-    def _persist_token_if_configured(self) -> None:
-        """把续期得到的新 token 写回配置文件。
-
-        只在该文件**本来就有 token** 时才写 —— 也就是说用户已经选择把 token
-        存在那里。若用户走的是环境变量，就不该偷偷往文件里落一个凭证。
-        """
-        if not self._config_had_token:
-            self._log("配置里原本没有 token（走环境变量），新 token 仅保留在内存中")
-            return
-        try:
-            path = self.cfg.save()
-            self._log(f"新 token 已写回 {path}")
-        except Exception as e:                               # noqa: BLE001
-            self._log(f"写回 token 失败（不影响本次运行）：{e}", "warn")
 
     def _run_target(self, t: Target, etb: str, store: StateStore) -> TargetOutcome:
         s = self.cfg.settings

@@ -3,16 +3,14 @@
 
     python run_monitor.py                 # 跑一轮
     python run_monitor.py --watch 600     # 每 10 分钟一轮
-    set YT_TOKEN=xxxx & python run_monitor.py
-
-退出码：0=无变更 10=有变更 1=错误 2=token 失效 3=查询失败
+退出码：0=无变更 10=有变更 1=错误 3=查询失败
 """
 
 import os
 import sys
 
-from ytmon.cli import EXIT_ERROR, EXIT_TOKEN, main
-from ytmon.errors import TokenError, YtmonError
+from ytmon.cli import EXIT_ERROR, main
+from ytmon.errors import YtmonError
 
 
 def _fail(msg: str, code: int) -> int:
@@ -23,8 +21,6 @@ def _fail(msg: str, code: int) -> int:
 if __name__ == "__main__":
     try:
         sys.exit(main())
-    except TokenError as e:
-        sys.exit(_fail(str(e), EXIT_TOKEN))
     except YtmonError as e:
         sys.exit(_fail(str(e), EXIT_ERROR))
     except KeyboardInterrupt:
