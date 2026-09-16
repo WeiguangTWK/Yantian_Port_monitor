@@ -402,10 +402,24 @@ python gui/app.py
 ## 测试
 
 ```powershell
-python -m unittest discover -s tests -v
+python tools/run_tests.py -v
 ```
 
-237 项离线测试（含真实浏览器探测），不需要网络。其中几类是**回归守卫**：
+**250 项离线测试**（含真实浏览器探测），不需要网络。
+
+> **为什么用 `tools/run_tests.py`，而不是直接 `python -m unittest discover`：**
+> Python 3.13+ 的 `tempfile` 在"只有工作区可写"的环境（沙箱等）里建出的临时目录**写不进去**，
+> 会让"写盘再重读"型用例集体假失败、清理阶段报满 ERROR —— 看起来像代码回归，其实不是。
+> 这个脚本**先探测再决定**：正常环境下什么都不做，受限环境才在自己进程内绕开，**并打印提示**。
+> 判别方法：真回归的断言失败长在 `tests/*.py` 自己的断言行上；
+> 环境假象长在 `tempfile.py` / `shutil.py` 的清理路径上。
+> **不要为了消掉这些假失败去改业务代码。**
+
+**已在 Python 3.8.10（Win7 交付运行时）上验证**：250 项中 249 项通过。
+唯一失败的是 `test_real_browser_is_recognised` —— 沙箱拒绝 Edge 的 `OpenProcess`，
+属环境限制，与探测逻辑无关。
+
+其中几类是**回归守卫**：
 
 - `TestQueryPageContract` —— 站点改了表单字段或结果页表头就立刻失败
 - `TestCheckToken` —— 守住 "WAF 拦截 / token 过期 / 网络错误" 三者的区分
