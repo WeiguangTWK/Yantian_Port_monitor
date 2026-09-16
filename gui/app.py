@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import pathlib
+import datetime as dt
+import math
 import sys
 import traceback
 
@@ -18,7 +20,7 @@ ensure_safe_stdout()
 
 try:
     from qt_compat import (BINDING, NO_EDIT_TRIGGERS, QT_VERSION, QThread,
-                           QtGui, QtWidgets, Signal, exec_app)
+                           QtCore, QtGui, QtWidgets, Signal, exec_app)
 except ImportError as e:                                      # pragma: no cover
     print(f"缺少 Qt 绑定：{e}", file=sys.stderr)
     raise SystemExit(2)
@@ -27,7 +29,7 @@ try:
     from qfluentwidgets import (BodyLabel, CardWidget, FluentWindow,
                                 InfoBar, InfoBarPosition,
                                 PrimaryPushButton, ProgressBar,
-                                SubtitleLabel, TextEdit)
+                                PushButton, SubtitleLabel, TextEdit)
 except ImportError as e:                                      # pragma: no cover
     print(f"界面组件加载失败：{e}\n"
           "源码运行请检查 requirements-win7-gui.txt；"
@@ -44,6 +46,10 @@ QApplication = QtWidgets.QApplication
 
 from ytmon import AppConfig, MonitorService                        # noqa: E402
 from targets import TargetsPage                                   # noqa: E402
+from monitor_settings import MonitorSettingsPage                  # noqa: E402
+from gui.monitor_runtime import Countdown, row_status             # noqa: E402
+from ytmon.notify import Notifier                                 # noqa: E402
+from ytmon.store import target_key                                # noqa: E402
 from ytmon.fatal import (format_exception, report_fatal,           # noqa: E402
                          stderr_is_lost)
 from ytmon.paths import (anchor_to_app_dir, app_base_dir,          # noqa: E402
@@ -69,7 +75,7 @@ STATUS_TEXT = {
 }
 
 TABLE_COLUMNS = ["目标", "类型", "码头航次", "船名", "闸口",
-                 "ETB", "ETD", "船代", "上次核对"]
+                 "ETB", "ETD", "船代", "状态"]
 
 
 # ---------------------------------------------------------------- worker 线程
@@ -93,7 +99,14 @@ class MonitorWorker(QThread):
         try:
             svc = MonitorService(self.cfg, on_event=self._on_event,
                                  dump_dir="snapshots")
-            self.finished_ok.emit(svc.run_cycle())
+            report = svc.run_cycle()
+            if self.cfg.enabled_channels:
+                try:
+                    Notifier(self.cfg.enabled_channels, self.cfg.settings,
+                             on_event=self._on_event).notify_cycle(report)
+                except Exception as error:
+                    self._on_event("log", {"message": f"通知处理失败：{error}", "level": "error"})
+            self.finished_ok.emit(report)
         except Exception as e:                                 # noqa: BLE001
             self.failed.emit(f"{type(e).__name__}: {e}\n"
                              f"{traceback.format_exc()[-600:]}")
@@ -115,6 +128,12 @@ class MonitorPage(QWidget):
         super().__init__(parent)
         self.cfg = cfg
         self.worker: MonitorWorker | None = None
+        self.querying = False
+        self.monitoring = False
+        self.countdown = Countdown()
+        self.target_states = {}
+        self.last_checked = {}
+        self.latest_outcomes = {}
 
         root = QVBoxLayout(self)
         root.setContentsMargins(24, 24, 24, 24)
@@ -128,14 +147,24 @@ class MonitorPage(QWidget):
         bar = QHBoxLayout()
         self.btn_run = PrimaryPushButton("立即检查", self)
         bar.addWidget(self.btn_run)
+        self.btn_watch = PushButton("开始监听", self)
+        self.btn_watch.clicked.connect(self._toggle_watch)
+        bar.addWidget(self.btn_watch)
         bar.addStretch(1)
         root.addLayout(bar)
 
         self.btn_run.clicked.connect(self._start)
 
         self.progress = ProgressBar(self)
+        self.progress.setMaximum(1000)
         self.progress.setValue(0)
         root.addWidget(self.progress)
+        self.countdown_text = BodyLabel("监听未启动", self)
+        root.addWidget(self.countdown_text)
+        self.timer = QtCore.QTimer(self)
+        self.timer.setInterval(250)
+        self.timer.timeout.connect(self._tick)
+        self.timer.start()
 
         # --- 表格 ---
         card = CardWidget(self)
@@ -152,6 +181,7 @@ class MonitorPage(QWidget):
         root.addWidget(BodyLabel("运行日志", self))
         self.log = TextEdit(self)
         self.log.setReadOnly(True)
+        self.log.document().setMaximumBlockCount(1000)
         root.addWidget(self.log, 1)
 
         self.refresh_table()
@@ -168,9 +198,17 @@ class MonitorPage(QWidget):
 
         self.table.setRowCount(len(data))
         for r, row in enumerate(data):
+            key = target_key(row['type'], row['value'])
+            outcome = self.latest_outcomes.get(key)
+            if outcome and outcome.voyages:
+                voyage = outcome.voyages[0]
+                row.update(voyage_code=voyage.voyage_code, ship_name=voyage.ship_name,
+                           gate=voyage.gate, etb=voyage.etb_raw, etd=voyage.etd_raw, agent=voyage.agent)
+            status = row_status(row['enabled'], self.target_states.get(key, ''),
+                                self.last_checked.get(key, row['last_seen']))
             values = [row["label"], {"ship": "船名", "voyage": "航次"}.get(row["type"], row["type"]),
                       row["voyage_code"], row["ship_name"], row["gate"],
-                      row["etb"], row["etd"], row["agent"], row["last_seen"]]
+                      row["etb"], row["etd"], row["agent"], status]
             for c, v in enumerate(values):
                 self.table.setItem(r, c, QTableWidgetItem(str(v)))
         self.table.resizeColumnsToContents()
@@ -178,22 +216,35 @@ class MonitorPage(QWidget):
     # ---------------------------------------------------------- 运行
 
     def _start(self) -> None:
-        if self.worker and self.worker.isRunning():
+        if self.querying:
             self.append_log("[skip] 上一轮还没跑完")
             return
 
         try:
             self.cfg = AppConfig.load(CONFIG_PATH)             # 每轮重载配置
-        except FileNotFoundError:
-            self._toast("错误", f"找不到 {CONFIG_PATH}", error=True)
+        except (OSError, ValueError, TypeError, AttributeError) as error:
+            self._configuration_failed(str(error))
             return
 
-        errs = self.cfg.validate()
+        try:
+            errs = self.cfg.validate()
+            if not self.cfg.enabled_targets:
+                errs.append('请先新增并启用至少一个目标。')
+            if self.monitoring:
+                Countdown.validate(self.cfg.settings.watch_interval_seconds, self.cfg.settings.watch_jitter_seconds)
+        except (ValueError, TypeError, OverflowError) as error:
+            errs = [str(error)]
         if errs:
-            self._toast("配置有问题", "；".join(errs[:3]), error=True)
+            self._configuration_failed("；".join(errs[:3]))
             return
 
+        self.countdown.clear()
         self.progress.setValue(0)
+        self.querying = True
+        self.countdown_text.setText('正在查询，完成后开始下一轮倒计时' if self.monitoring else '正在查询')
+        for target in self.cfg.enabled_targets:
+            self.target_states[target_key(target.type, target.value)] = 'updating'
+        self.refresh_table()
         self.append_log("开始检查船期")
         self.btn_run.setEnabled(False)
 
@@ -209,8 +260,6 @@ class MonitorPage(QWidget):
         """在 UI 线程里执行（signal 跨线程是队列投递，安全）。"""
         if kind == "cycle_start":
             total = payload.get("total", 0)
-            self.progress.setMaximum(max(1, total))
-            self.progress.setValue(0)
             self.append_log(f"本轮 {total} 个目标，起始日 {payload.get('etb_time')}")
         elif kind == "target_start":
             t = payload.get("target")
@@ -219,27 +268,115 @@ class MonitorPage(QWidget):
             o = payload["outcome"]
             self.append_log(f"    {STATUS_TEXT.get(o.status, o.status)}：{o.label}"
                             + (f"  {o.error}" if o.error else ""))
-            self.progress.setValue(payload.get("index", 0))
+            key = target_key(o.target.type, o.target.value)
+            self.target_states[key] = o.status
+            self.latest_outcomes[key] = o
+            if o.status not in (STATUS_ERROR, STATUS_MISSING):
+                self.last_checked[key] = dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            self.refresh_table()
             if o.changed:
                 for v in o.voyages:
                     for c in o.changes.get(v.voyage_code, []):
                         self.append_log(f"      · {c.describe()}")
         elif kind == "log":
             self.append_log(f"    {payload.get('message')}")
+        elif kind == "alert_sent":
+            self.append_log(f"[通知] {'已发送：' + str(payload.get('channel')) if payload.get('ok') else payload.get('message')}")
 
     def _on_done(self, result) -> None:
+        # 早停时没有结果的目标不能继续显示“正在更新”。
+        for target in self.cfg.enabled_targets:
+            key = target_key(target.type, target.value)
+            if self.target_states.get(key) == 'updating':
+                self.target_states[key] = STATUS_ERROR
         self.append_log(f"检查完成：{result.summary_line()}")
         if result.has_changes:
             self._toast("船期变更", result.summary_line())
         self.refresh_table()
 
     def _on_failed(self, message: str) -> None:
+        for target in self.cfg.enabled_targets:
+            key = target_key(target.type, target.value)
+            if self.target_states.get(key) == 'updating':
+                self.target_states[key] = STATUS_ERROR
+        self.refresh_table()
         self.append_log(f"[错误] {message}")
         self._toast("执行失败", message[:200], error=True)
 
     def _on_thread_finished(self) -> None:
+        worker = self.worker
+        self.worker = None
+        if worker is not None:
+            worker.deleteLater()
+        self.querying = False
         self.btn_run.setEnabled(True)
         self.busy_changed.emit(False)
+        if self.monitoring:
+            self._schedule_next()
+        else:
+            self._tick()
+
+    def _configuration_failed(self, message):
+        self._stop_watch()
+        self.append_log(f'[配置错误] {message}')
+        self._toast('配置有问题', message, error=True)
+
+    def _toggle_watch(self):
+        if self.monitoring:
+            self._stop_watch()
+            return
+        self.monitoring = True
+        self.btn_watch.setText('停止监听')
+        self.append_log('监听已启动')
+        if not self.querying:
+            self._start()
+
+    def _stop_watch(self):
+        was_monitoring = self.monitoring
+        self.monitoring = False
+        self.countdown.clear()
+        self.btn_watch.setText('开始监听')
+        if was_monitoring:
+            self.append_log('监听已停止；当前查询不会被强制中断')
+        self._tick()
+
+    def _schedule_next(self):
+        try:
+            self.countdown.reset(self.cfg.settings.watch_interval_seconds,
+                                 self.cfg.settings.watch_jitter_seconds)
+        except (ValueError, TypeError, OverflowError) as error:
+            self._configuration_failed(str(error))
+            return
+        self._tick()
+
+    def configuration_changed(self):
+        keys = {target_key(target.type, target.value) for target in self.cfg.targets}
+        for mapping in (self.target_states, self.last_checked, self.latest_outcomes):
+            for key in list(mapping):
+                if key not in keys:
+                    del mapping[key]
+        self.refresh_table()
+        if self.monitoring and not self.querying:
+            if not self.cfg.enabled_targets:
+                self._stop_watch()
+            else:
+                self._schedule_next()
+
+    def _tick(self):
+        if self.querying:
+            self.progress.setValue(0)
+            self.countdown_text.setText('正在查询；完成后继续监听' if self.monitoring else '正在查询；自动监听已停止')
+            return
+        if not self.monitoring:
+            self.progress.setValue(0)
+            self.countdown_text.setText('监听未启动')
+            return
+        self.progress.setValue(self.countdown.bar_value)
+        seconds = math.ceil(self.countdown.remaining)
+        minutes, seconds = divmod(seconds, 60)
+        self.countdown_text.setText(f'距离下一次查询：{minutes:02d}:{seconds:02d}')
+        if self.countdown.due and QApplication.activeModalWidget() is None:
+            self._start()
 
     # ---------------------------------------------------------- 小工具
 
@@ -265,9 +402,23 @@ class MainWindow(FluentWindow):
         self.addSubInterface(self.targets_page, QtGui.QIcon(str(ASSET_DIR / "ship.svg")), "目标管理")
         self.monitor_page.busy_changed.connect(self.targets_page.set_busy)
         self.targets_page.changed.connect(self._reload_config)
+        self.settings_page = MonitorSettingsPage(CONFIG_PATH, self)
+        self.settings_page.setObjectName("monitorSettingsPage")
+        self.addSubInterface(self.settings_page, QtGui.QIcon(str(ASSET_DIR / "monitor.svg")), "监听设置")
+        self.monitor_page.busy_changed.connect(self.settings_page.set_busy)
+        self.settings_page.changed.connect(self._settings_saved)
+        self.targets_page.changed.connect(self.settings_page.refresh_snapshot)
 
         self.resize(1080, 720)
         self.setWindowTitle(f"盐田船期监控  ·  {BINDING} / Qt {QT_VERSION}")
+
+    def _settings_saved(self) -> None:
+        try:
+            self.targets_page.store.reload()
+            self.targets_page.refresh()
+        except (OSError, ValueError) as error:
+            self.targets_page.message.setText(str(error))
+        self._reload_config()
 
     def _reload_config(self) -> None:
         try:
@@ -275,7 +426,16 @@ class MainWindow(FluentWindow):
         except (OSError, ValueError) as error:
             self.monitor_page.append_log(f"配置读取失败：{error}")
             return
-        self.monitor_page.refresh_table()
+        self.monitor_page.configuration_changed()
+
+    def closeEvent(self, event):
+        self.monitor_page._stop_watch()
+        if self.monitor_page.querying:
+            event.ignore()
+            self.monitor_page._toast('查询尚未结束', '已停止自动监听，请等待本轮查询完成后再关闭。')
+            return
+        self.monitor_page.timer.stop()
+        super().closeEvent(event)
 
 
 def main() -> int:

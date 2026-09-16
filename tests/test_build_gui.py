@@ -57,7 +57,7 @@ class TestBuildCommand(unittest.TestCase):
     def test_navigation_assets_are_included(self):
         self.assertIn("--add-data", self.cmd)
         self.assertIn(str(ROOT / "gui" / "assets") + os.pathsep + "gui/assets", self.cmd)
-        for name in ("home.svg", "ship.svg"):
+        for name in ("home.svg", "ship.svg", "monitor.svg"):
             self.assertTrue((ROOT / "gui" / "assets" / name).is_file())
 
     def test_paths_include_project_root_and_gui_dir(self):

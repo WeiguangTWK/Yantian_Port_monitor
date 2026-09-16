@@ -39,12 +39,19 @@ class TargetConfig:
         raw = dict(self.raw)
         raw['targets'] = [dict(type=t.type, value=t.value, label=t.label,
                                enabled=t.enabled) for t in targets]
+        self.save_raw(raw)
+        self.targets = list(targets)
+
+    def save_raw(self, raw):
+        current = self.path.read_bytes() if self.path.exists() else None
+        if current != self.original:
+            raise ValueError('配置已被其他程序修改，请重新加载后再编辑。')
         payload = json.dumps(raw, ensure_ascii=False, indent=2).encode('utf-8')
         self.path.parent.mkdir(parents=True, exist_ok=True)
         temporary = self.path.with_suffix(self.path.suffix + '.tmp')
         temporary.write_bytes(payload)
         temporary.replace(self.path)
-        self.raw, self.original, self.targets = raw, payload, list(targets)
+        self.raw, self.original = raw, payload
 
     def put(self, kind, value, label='', enabled=True, index=None):
         target = Target(kind, value.strip(), label.strip(), enabled)
