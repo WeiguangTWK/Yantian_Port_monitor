@@ -50,7 +50,7 @@ SECRET_PATTERNS = [
 # 其余所有文件一律照扫。
 SCAN_EXEMPT = {"tools/make_bundle.py"}
 
-_ALLOWED_SUFFIX = {".py", ".md", ".json", ".txt"}
+_ALLOWED_SUFFIX = {".py", ".md", ".json", ".txt", ".svg"}
 
 
 def iter_files(include_tests: bool) -> list[pathlib.Path]:

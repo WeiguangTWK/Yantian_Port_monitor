@@ -18,14 +18,14 @@ ensure_safe_stdout()
 
 try:
     from qt_compat import (BINDING, NO_EDIT_TRIGGERS, QT_VERSION, QThread,
-                           QtWidgets, Signal, exec_app)
+                           QtGui, QtWidgets, Signal, exec_app)
 except ImportError as e:                                      # pragma: no cover
     print(f"缺少 Qt 绑定：{e}", file=sys.stderr)
     raise SystemExit(2)
 
 try:
     from qfluentwidgets import (BodyLabel, CardWidget, FluentWindow,
-                                InfoBar, InfoBarPosition, NavigationItemPosition,
+                                InfoBar, InfoBarPosition,
                                 PrimaryPushButton, ProgressBar,
                                 SubtitleLabel, TextEdit)
 except ImportError as e:                                      # pragma: no cover
@@ -43,6 +43,7 @@ QTableWidgetItem = QtWidgets.QTableWidgetItem
 QApplication = QtWidgets.QApplication
 
 from ytmon import AppConfig, MonitorService                        # noqa: E402
+from targets import TargetsPage                                   # noqa: E402
 from ytmon.fatal import (format_exception, report_fatal,           # noqa: E402
                          stderr_is_lost)
 from ytmon.paths import (anchor_to_app_dir, app_base_dir,          # noqa: E402
@@ -53,6 +54,11 @@ from ytmon.service import (STATUS_CHANGED, STATUS_ERROR,           # noqa: E402
 # 配置用**绝对路径**：打包成 exe 之后 CWD 不可信
 # （双击、快捷方式、计划任务各自的"当前目录"都不一样）。
 CONFIG_PATH = str(app_base_dir() / "watchlist.json")
+
+# 图标属于程序资源，冻结后从解包目录读取，不依赖当前工作目录。
+ASSET_DIR = (pathlib.Path(sys._MEIPASS) / "gui" / "assets"
+             if getattr(sys, "frozen", False)
+             else pathlib.Path(__file__).resolve().parent / "assets")
 
 STATUS_TEXT = {
     STATUS_FIRST: "首次",
@@ -102,6 +108,8 @@ class MonitorWorker(QThread):
 
 class MonitorPage(QWidget):
     """监控面板：目标表格 + 操作按钮 + 进度 + 日志。"""
+
+    busy_changed = Signal(bool)
 
     def __init__(self, cfg: AppConfig, parent=None):
         super().__init__(parent)
@@ -194,6 +202,7 @@ class MonitorPage(QWidget):
         self.worker.finished_ok.connect(self._on_done)
         self.worker.failed.connect(self._on_failed)
         self.worker.finished.connect(self._on_thread_finished)
+        self.busy_changed.emit(True)
         self.worker.start()
 
     def _on_event(self, kind: str, payload: dict) -> None:
@@ -230,6 +239,7 @@ class MonitorPage(QWidget):
 
     def _on_thread_finished(self) -> None:
         self.btn_run.setEnabled(True)
+        self.busy_changed.emit(False)
 
     # ---------------------------------------------------------- 小工具
 
@@ -249,13 +259,23 @@ class MainWindow(FluentWindow):
         self.monitor_page = MonitorPage(cfg, self)
         self.monitor_page.setObjectName("monitorPage")
 
-        self.addSubInterface(self.monitor_page, None, "监控面板")
-        self.navigationInterface.addItem(
-            routeKey="placeholder", icon=None, text="目标管理 / 设置（待实现）",
-            onClick=lambda: None, position=NavigationItemPosition.BOTTOM)
+        self.addSubInterface(self.monitor_page, QtGui.QIcon(str(ASSET_DIR / "home.svg")), "主页")
+        self.targets_page = TargetsPage(CONFIG_PATH, self)
+        self.targets_page.setObjectName("targetsPage")
+        self.addSubInterface(self.targets_page, QtGui.QIcon(str(ASSET_DIR / "ship.svg")), "目标管理")
+        self.monitor_page.busy_changed.connect(self.targets_page.set_busy)
+        self.targets_page.changed.connect(self._reload_config)
 
         self.resize(1080, 720)
         self.setWindowTitle(f"盐田船期监控  ·  {BINDING} / Qt {QT_VERSION}")
+
+    def _reload_config(self) -> None:
+        try:
+            self.monitor_page.cfg = AppConfig.load(CONFIG_PATH)
+        except (OSError, ValueError) as error:
+            self.monitor_page.append_log(f"配置读取失败：{error}")
+            return
+        self.monitor_page.refresh_table()
 
 
 def main() -> int:
@@ -275,14 +295,7 @@ def main() -> int:
     try:
         cfg = AppConfig.load(CONFIG_PATH)
     except FileNotFoundError:
-        report_fatal(
-            "找不到配置文件",
-            "路径：%s\n\n"
-            "请把同目录下的 watchlist.example.json 复制成 watchlist.json，\n"
-            "并把 targets 改成要盯的船名（type=ship）或码头航次（type=voyage）。"
-            % CONFIG_PATH,
-            dialog=stderr_is_lost())
-        return 1
+        cfg = AppConfig(path=pathlib.Path(CONFIG_PATH))
 
     app = QApplication(sys.argv)
     win = MainWindow(cfg)

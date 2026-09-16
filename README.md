@@ -4,7 +4,17 @@
 
 ## 当前功能
 
-CLI 支持单轮查询、循环监控、变更比较及告警。GUI 支持手动查询和结果查看，目标管理与设置页仍为占位，尚未实现独立常驻监控或自动告警。本轮仅清理旧登录链路和文案。
+CLI 支持单轮查询、循环监控、变更比较及告警。GUI 支持目标管理、手动查询和结果查看；查询设置、通知配置及独立常驻监控尚未实现。
+
+## GUI 目标管理
+
+进入“目标管理”页可新增、编辑、启用 / 停用和删除船名或码头航次。每次操作立即保存到 watchlist.json；没有配置文件时，首次保存会创建配置，无需手工复制模板。
+
+左侧导航收起时显示主页和船舶图标；点击菜单展开后，图标右侧显示“主页”和“目标管理”。
+
+新增和编辑时去除首尾空白；同类型目标按名称不区分大小写去重，停用目标也参与检测。显示名称仅影响展示。删除需要确认，不删除查询历史；修改查询名称或类型后建立新的比较基线。
+
+查询进行中暂不可修改目标。保存保留其他查询设置、通知配置和注释字段；若文件已被外部修改，请点击“重新加载”后重新编辑。首次创建的配置没有通知通道，可后续通过配置文件设置。
 
 ## 源码运行
 
@@ -33,7 +43,7 @@ python tools/env_check.py --browser C:\Supermium\supermium.exe
 
 ## 配置与通知
 
-配置见 [watchlist.example.json](watchlist.example.json)。旧 token 与 settings.precheck 被忽略，保存时不再输出。旧 --token、--no-auto-renew 参数与续期工具已移除。
+配置见 [watchlist.example.json](watchlist.example.json)。旧 token 与 settings.precheck 被忽略，通过 AppConfig 保存时不再输出；GUI 目标管理仅修改 targets，不清理其他字段。旧 --token、--no-auto-renew 参数与续期工具已移除。
 通知支持 Windows、钉钉、企业微信、飞书、webhook 和邮件。默认在变更、未查到及连续错误达到阈值时告警，首次查询用于建立基线。Windows 通知需要已登录的交互式桌面会话；无人值守可配置邮件或 webhook。
 
 stale_after_hours 在恢复运行时检测长时间未成功查询；heartbeat_hours 定期发送运行消息。进程停止后两者都不能自行告警。heartbeat_url 可接入外部心跳服务，由外部服务检测停止。

@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import pathlib
+import os
 import sys
 import tempfile
 import unittest
@@ -52,6 +53,12 @@ class TestBuildCommand(unittest.TestCase):
 
     def test_entry_point_is_the_gui(self):
         self.assertTrue(self.cmd[-1].endswith("app.py"))
+
+    def test_navigation_assets_are_included(self):
+        self.assertIn("--add-data", self.cmd)
+        self.assertIn(str(ROOT / "gui" / "assets") + os.pathsep + "gui/assets", self.cmd)
+        for name in ("home.svg", "ship.svg"):
+            self.assertTrue((ROOT / "gui" / "assets" / name).is_file())
 
     def test_paths_include_project_root_and_gui_dir(self):
         """app.py 在运行期往 sys.path 插目录，分析期得靠 --paths 才找得到 ytmon / qt_compat。"""
