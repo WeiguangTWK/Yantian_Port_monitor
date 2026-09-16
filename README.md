@@ -100,7 +100,3 @@ tools/make_bundle.py 生成源码交付包，tools/build_gui.py 和 tools/build_
 以下为历史记录，不作为当前运行指南，也不进入源码交付包：
 
 - [站点勘察](RECON-盐田船期.md)
-- [GUI 技术选型](docs/GUI-技术选型与基座.md)
-- [GUI 打包记录](docs/GUI-Win7打包实测.md)
-
-项目文件与现行源码优先于历史文档及 OpenViking 记忆。
