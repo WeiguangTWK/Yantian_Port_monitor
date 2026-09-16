@@ -65,8 +65,7 @@ PACKAGING = ROOT / "packaging"
 TARGETS = [
     dict(name="ytmon-gui", entry="gui/app.py", windowed=True,
          contents="_internal-gui",
-         collect_all=["qfluentwidgets"], collect_submodules=["win32comext"],
-         hidden=["win32con", "pythoncom", "pywintypes"]),
+         collect_all=[], collect_submodules=[], hidden=[]),
     dict(name="ytmon", entry="run_monitor.py", windowed=False,
          contents="_internal-cli",
          collect_all=[], collect_submodules=[], hidden=[]),
@@ -138,6 +137,11 @@ def copy_docs(bundle: pathlib.Path) -> None:
 # ------------------------------------------------------------------ 构建
 
 def pyinstaller_argv(target: dict, staging: pathlib.Path, spec_dir: pathlib.Path) -> "list[str]":
+    if target["entry"] == "gui/app.py":
+        return build_gui.build_command(
+            target["name"], target["windowed"], staging / "dist",
+            contents_directory=target["contents"],
+            workpath=staging / ("work-" + target["name"]), specpath=spec_dir)
     argv = [
         sys.executable, "-m", "PyInstaller",
         "--noconfirm", "--clean", "--onedir",
@@ -174,6 +178,8 @@ def build_targets(staging: pathlib.Path) -> "dict[str, pathlib.Path]":
         out = staging / "dist" / target["name"]
         if not out.is_dir():
             raise RuntimeError("产物目录不存在：%s" % out)
+        if target["entry"] == "gui/app.py":
+            build_gui.verify_gui_output(out, target["contents"])
         built[target["name"]] = out
         log("  -> %s（%.1f MB）" % (out, build_gui.dir_size_mb(out)))
     return built
@@ -234,6 +240,7 @@ def download_wheels(dest: pathlib.Path, mirror: str,
     argv = [
         sys.executable, "-m", "pip", "download",
         "-r", str(ROOT / "requirements-win7.txt"),
+        "-r", str(ROOT / "requirements-win7-gui.txt"),
         "-d", str(dest),
         "--only-binary=:all:",
         "--python-version", "38", "--platform", "win_amd64",

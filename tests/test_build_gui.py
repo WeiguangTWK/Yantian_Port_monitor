@@ -66,6 +66,33 @@ class TestBuildCommand(unittest.TestCase):
         self.assertTrue((ROOT / "LICENSE").is_file())
         self.assertTrue((ROOT / "licenses" / "LGPL-3.0.txt").is_file())
 
+    def test_metadata_and_svg_are_explicit(self):
+        for package in ('PySide2', 'PySide2-Fluent-Widgets'):
+            self.assertIn('--copy-metadata ' + package, self.joined)
+        self.assertIn('--hidden-import PySide2.QtSvg', self.joined)
+        self.assertIn('--collect-submodules ytmon', self.joined)
+
+
+class TestGuiOutputVerification(unittest.TestCase):
+    def test_missing_output_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(RuntimeError, 'GUI 产物缺少'):
+                build_gui.verify_gui_output(pathlib.Path(directory))
+
+    def test_complete_manifest_with_custom_contents(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = pathlib.Path(directory)
+            runtime = output / '_internal-gui'
+            for relative in build_gui.REQUIRED_RESOURCES:
+                path = runtime / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b'fixture')
+            for package in build_gui.COPY_METADATA:
+                (runtime / (package.replace('-', '_') + '-1.0.dist-info')).mkdir()
+            for plugin in ('qsvgicon.dll', 'qjpeg.dll'):
+                (runtime / plugin).write_bytes(b'fixture')
+            build_gui.verify_gui_output(output, '_internal-gui')
+
     def test_paths_include_project_root_and_gui_dir(self):
         """app.py 在运行期往 sys.path 插目录，分析期得靠 --paths 才找得到 ytmon / qt_compat。"""
         self.assertIn(str(ROOT), self.cmd)

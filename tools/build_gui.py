@@ -48,9 +48,16 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 # 冻结时必须显式补的隐藏导入 —— 不补会报 No module named 'win32com'
 # （原因：qfluentwidgets 的依赖 qframelesswindow 用了
 #   `from win32comext.shell import shellcon`，静态分析抓不到）
-HIDDEN_IMPORTS = ["win32con", "pythoncom", "pywintypes"]
-COLLECT_SUBMODULES = ["win32comext"]
+HIDDEN_IMPORTS = ["win32con", "pythoncom", "pywintypes", "PySide2.QtSvg"]
+COLLECT_SUBMODULES = ["win32comext", "ytmon"]
 COLLECT_ALL = ["qfluentwidgets"]
+COPY_METADATA = ["PySide2", "PySide2-Fluent-Widgets"]
+GUI_DATA = [("gui/assets", "gui/assets"), ("LICENSE", "."), ("licenses", "licenses")]
+REQUIRED_RESOURCES = [
+    "gui/assets/home.svg", "gui/assets/ship.svg", "gui/assets/monitor.svg",
+    "gui/assets/notify.svg", "gui/assets/about.svg", "gui/assets/newguilun_logo.jpg",
+    "LICENSE", "licenses/LGPL-3.0.txt", "licenses/THIRD_PARTY_NOTICES.md",
+]
 
 # (import 名, 装它用的包名)
 REQUIRED_IMPORTS = [
@@ -90,6 +97,9 @@ def check_environment(version_info=None) -> "list[str]":
 
     if not ENTRY.is_file():
         problems.append("找不到入口：%s" % ENTRY)
+    for relative in REQUIRED_RESOURCES:
+        if not (ROOT / relative).is_file():
+            problems.append("缺少 GUI 交付资源：%s" % relative)
 
     return problems
 
@@ -122,21 +132,27 @@ def build_env(verbose: bool = True) -> "dict[str, str]":
     return env
 
 
-def build_command(name: str, windowed: bool, dist_root: pathlib.Path) -> "list[str]":
+def build_command(name: str, windowed: bool, dist_root: pathlib.Path,
+                  contents_directory="_internal", workpath=None, specpath=None) -> "list[str]":
     mode = "--windowed" if windowed else "--console"
     cmd = [
         sys.executable, "-m", "PyInstaller",
         "--noconfirm", "--clean", "--onedir", mode,
         "--name", name,
+        "--contents-directory", contents_directory,
         "--paths", str(ROOT),
         "--paths", str(ROOT / "gui"),
-        "--add-data", str(ROOT / "gui" / "assets") + os.pathsep + "gui/assets",
-        "--add-data", str(ROOT / "LICENSE") + os.pathsep + ".",
-        "--add-data", str(ROOT / "licenses") + os.pathsep + "licenses",
-        "--workpath", str(ROOT / ".toolchain" / "pyi-build"),
+        "--workpath", str(workpath if workpath is not None else ROOT / ".toolchain" / "pyi-build"),
         "--distpath", str(dist_root),
-        "--specpath", str(ROOT / ".toolchain"),
+        "--specpath", str(specpath if specpath is not None else ROOT / ".toolchain"),
     ]
+    for source, destination in GUI_DATA:
+        cmd += ["--add-data", str(ROOT / source) + os.pathsep + destination]
+    for package in COPY_METADATA:
+        cmd += ["--copy-metadata", package]
+    # 主路径与源码一致，避免冻结时混入其他 Qt 绑定。
+    for module in ("PySide6", "PyQt5", "PyQt6"):
+        cmd += ["--exclude-module", module]
     for mod in COLLECT_ALL:
         cmd += ["--collect-all", mod]
     for mod in COLLECT_SUBMODULES:
@@ -145,6 +161,22 @@ def build_command(name: str, windowed: bool, dist_root: pathlib.Path) -> "list[s
         cmd += ["--hidden-import", mod]
     cmd.append(str(ENTRY))
     return cmd
+
+
+def verify_gui_output(out_dir: pathlib.Path, contents_directory="_internal") -> None:
+    """关键资源缺失时中止交付；不代替 GUI 运行及实机验证。"""
+    runtime = out_dir / contents_directory
+    missing = [relative for relative in REQUIRED_RESOURCES if not (runtime / relative).is_file()]
+    for package in COPY_METADATA:
+        prefix = package.lower().replace('-', '_') + '_'
+        if not any(p.is_dir() and p.name.lower().replace('-', '_').startswith(prefix)
+                   for p in runtime.glob('*.dist-info')):
+            missing.append('metadata: ' + package)
+    for plugin in ('qsvgicon.dll', 'qjpeg.dll'):
+        if not any(runtime.rglob(plugin)):
+            missing.append('Qt plugin: ' + plugin)
+    if missing:
+        raise RuntimeError('GUI 产物缺少必要文件：' + '；'.join(missing))
 
 
 def dir_size_mb(path: pathlib.Path) -> float:
@@ -211,6 +243,7 @@ def main(argv: "list[str]") -> int:
         return proc.returncode
 
     out = dist_root / args.name
+    verify_gui_output(out)
     print("")
     print("[build_gui] 完成：%s" % out)
     if out.is_dir():

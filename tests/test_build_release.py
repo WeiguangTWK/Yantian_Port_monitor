@@ -14,6 +14,7 @@ import pathlib
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -21,6 +22,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 
 import build_release                                          # noqa: E402
 import make_bundle                                            # noqa: E402
+import build_gui                                              # noqa: E402
 
 
 class TestTargetsAreMergeable(unittest.TestCase):
@@ -53,6 +55,26 @@ class TestTargetsAreMergeable(unittest.TestCase):
         for target in build_release.TARGETS:
             self.assertTrue((ROOT / target["entry"]).is_file(),
                             "入口不存在：%s" % target["entry"])
+
+    def test_gui_uses_shared_build_command(self):
+        target = next(t for t in build_release.TARGETS if t['entry'] == 'gui/app.py')
+        staging = ROOT / '.toolchain/test-staging'
+        expected = build_gui.build_command(target['name'], target['windowed'], staging / 'dist',
+                                          contents_directory=target['contents'],
+                                          workpath=staging / ('work-' + target['name']),
+                                          specpath=staging / 'spec')
+        self.assertEqual(build_release.pyinstaller_argv(target, staging, staging / 'spec'), expected)
+
+
+class TestOfflineGuiDependencies(unittest.TestCase):
+    def test_download_includes_both_requirement_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with patch('build_release.subprocess.run') as run:
+                run.return_value.returncode = 0
+                build_release.download_wheels(pathlib.Path(directory), 'https://example.invalid/simple')
+        argv = run.call_args[0][0]
+        self.assertIn(str(ROOT / 'requirements-win7.txt'), argv)
+        self.assertIn(str(ROOT / 'requirements-win7-gui.txt'), argv)
 
 
 class TestCmdAssets(unittest.TestCase):
