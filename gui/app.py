@@ -7,6 +7,8 @@ import datetime as dt
 import math
 import sys
 import traceback
+import copy
+from collections import deque
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
@@ -95,7 +97,6 @@ class MonitorWorker(QThread):
     event = Signal(str, dict)          # 进度事件（on_event 回调转出来）
     finished_ok = Signal(object)       # CycleReport
     failed = Signal(str)
-    persistent_notification = Signal(str, str)
 
     def __init__(self, cfg: AppConfig, parent=None):
         super().__init__(parent)
@@ -106,14 +107,6 @@ class MonitorWorker(QThread):
             svc = MonitorService(self.cfg, on_event=self._on_event,
                                  dump_dir="snapshots")
             report = svc.run_cycle()
-            if self.cfg.enabled_channels:
-                try:
-                    Notifier(self.cfg.enabled_channels, self.cfg.settings,
-                             on_event=self._on_event,
-                             windows_transport=lambda channel, message: dispatch_windows(
-                                 channel, message, self.persistent_notification.emit)).notify_cycle(report)
-                except Exception as error:
-                    self._on_event("log", {"message": f"通知处理失败：{error}", "level": "error"})
             self.finished_ok.emit(report)
         except Exception as e:                                 # noqa: BLE001
             self.failed.emit(f"{type(e).__name__}: {e}\n"
@@ -127,16 +120,40 @@ class MonitorWorker(QThread):
 # ---------------------------------------------------------------- 界面
 
 
+class NotificationWorker(QThread):
+    """只发送通知；由主页按 FIFO 启动，避免冷却状态的并发读写。"""
+
+    event = Signal(str, dict)
+    persistent_notification = Signal(str, str)
+
+    def __init__(self, cfg, report, parent=None):
+        super().__init__(parent)
+        self.cfg = cfg
+        self.report = report
+
+    def run(self):
+        try:
+            Notifier(self.cfg.enabled_channels, self.cfg.settings,
+                     on_event=self.event.emit,
+                     windows_transport=lambda channel, message: dispatch_windows(
+                         channel, message, self.persistent_notification.emit)).notify_cycle(self.report)
+        except Exception as error:
+            self.event.emit('log', {'message': f'通知处理失败：{error}', 'level': 'error'})
+
+
 class MonitorPage(QWidget):
     """监控面板：目标表格 + 操作按钮 + 进度 + 日志。"""
 
     busy_changed = Signal(bool)
+    notification_queue_changed = Signal(bool)
     persistent_notification = Signal(str, str)
 
     def __init__(self, cfg: AppConfig, parent=None):
         super().__init__(parent)
         self.cfg = cfg
         self.worker: MonitorWorker | None = None
+        self.notification_worker = None
+        self.notification_jobs = deque()
         self.querying = False
         self.notification_busy = False
         self.monitoring = False
@@ -262,7 +279,6 @@ class MonitorPage(QWidget):
 
         self.worker = MonitorWorker(self.cfg, self)
         self.worker.event.connect(self._on_event)
-        self.worker.persistent_notification.connect(self.persistent_notification)
         self.worker.finished_ok.connect(self._on_done)
         self.worker.failed.connect(self._on_failed)
         self.worker.finished.connect(self._on_thread_finished)
@@ -297,6 +313,11 @@ class MonitorPage(QWidget):
             self.append_log(f"[通知] {'已发送：' + str(payload.get('channel')) if payload.get('ok') else payload.get('message')}")
 
     def _on_done(self, result) -> None:
+        cycle_cfg = self.worker.cfg
+        if cycle_cfg.enabled_channels:
+            # 使用本轮配置快照；后续编辑配置不能改写已排队的告警。
+            self.notification_jobs.append((copy.deepcopy(cycle_cfg), copy.deepcopy(result)))
+            self._start_notification_job()
         # 早停时没有结果的目标不能继续显示“正在更新”。
         for target in self.cfg.enabled_targets:
             key = target_key(target.type, target.value)
@@ -306,6 +327,29 @@ class MonitorPage(QWidget):
         if result.has_changes:
             self._toast("船期变更", result.summary_line())
         self.refresh_table()
+
+    @property
+    def notifications_pending(self):
+        return self.notification_worker is not None or bool(self.notification_jobs)
+
+    def _start_notification_job(self):
+        if self.notification_worker is not None or not self.notification_jobs:
+            return
+        cfg, report = self.notification_jobs.popleft()
+        self.notification_worker = NotificationWorker(cfg, report, self)
+        self.notification_worker.event.connect(self._on_event)
+        self.notification_worker.persistent_notification.connect(self.persistent_notification)
+        self.notification_worker.finished.connect(self._notification_job_finished)
+        self.notification_queue_changed.emit(True)
+        self.notification_worker.start()
+
+    def _notification_job_finished(self):
+        worker = self.notification_worker
+        self.notification_worker = None
+        worker.deleteLater()
+        self._start_notification_job()
+        if not self.notifications_pending:
+            self.notification_queue_changed.emit(False)
 
     def _on_failed(self, message: str) -> None:
         for target in self.cfg.enabled_targets:
@@ -452,6 +496,7 @@ class MainWindow(FluentWindow):
         self.monitor_page.busy_changed.connect(self.notifications_page.set_busy)
         self.notifications_page.testing_changed.connect(self._notification_testing)
         self.monitor_page.busy_changed.connect(self._try_pending_exit)
+        self.monitor_page.notification_queue_changed.connect(self._try_pending_exit)
         self.notifications_page.testing_changed.connect(self._try_pending_exit)
         self.notifications_page.changed.connect(self._notifications_saved)
         self.targets_page.changed.connect(self.notifications_page.refresh_snapshot)
@@ -483,7 +528,8 @@ class MainWindow(FluentWindow):
         self.close()
 
     def _try_pending_exit(self, busy=False):
-        if self.exit_requested and not self.monitor_page.querying and not self.notifications_page.testing:
+        if (self.exit_requested and not self.monitor_page.querying
+                and not self.monitor_page.notifications_pending and not self.notifications_page.testing):
             # 等 finished 的清理槽完成后，再关窗口和 Qt 事件循环。
             QtCore.QTimer.singleShot(0, self.close)
 
@@ -531,7 +577,8 @@ class MainWindow(FluentWindow):
             self.monitor_page.append_log('窗口已隐藏至系统托盘，当前监听状态保持不变')
             return
         self.monitor_page._stop_watch()
-        if self.monitor_page.querying or self.notifications_page.testing:
+        if (self.monitor_page.querying or self.monitor_page.notifications_pending
+                or self.notifications_page.testing):
             self.exit_requested = True
             self.setEnabled(False)
             event.ignore()

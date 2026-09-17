@@ -213,7 +213,7 @@ class NotificationsPage(QtWidgets.QWidget):
         self.policy_inputs = {}
         for key, title, suffix in [('alert_error_after', '连续错误阈值', ' 轮'),
                                     ('alert_cooldown_seconds', '同类通知冷却', ' 秒'),
-                                    ('alert_max_per_cycle', '每轮目标告警上限', ' 条')]:
+                                    ('alert_max_per_cycle', '每批目标告警数量', ' 条')]:
             control = SpinBox(policy_card)
             control.setRange(*POLICY_RANGES[key])
             control.setSuffix(suffix)

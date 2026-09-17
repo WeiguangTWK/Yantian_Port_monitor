@@ -399,7 +399,7 @@ class TestNotifierDispatch(unittest.TestCase):
         self.assertFalse(n.notify_cycle(rep)[0].ok)
         self.assertTrue(n.throttle.should_send(rep.outcomes[0]))   # 仍待发
 
-    def test_max_per_cycle_caps_the_burst(self):
+    def test_batch_size_does_not_drop_later_targets(self):
         tr = RecordingTransport()
         n = notifier([NotifyChannel(kind="webhook", url="https://a")], tr,
                      st=settings(alert_state_file=str(TMP / "cap.json"),
@@ -410,6 +410,43 @@ class TestNotifierDispatch(unittest.TestCase):
         self.assertIn("船0", sent["text"])
         self.assertIn("船1", sent["text"])
         self.assertNotIn("船5", sent["text"])
+        self.assertEqual(len(tr.calls), 3)
+        combined = '\n'.join(payload['text'] for _, payload in tr.calls)
+        for i in range(6):
+            self.assertIn(f'船{i}', combined)
+        for o in rep.outcomes:
+            self.assertFalse(n.throttle.should_send(o))
+
+    def test_all_changed_vessels_include_etb_and_etd(self):
+        tr = RecordingTransport()
+        n = notifier([NotifyChannel(kind='webhook', url='https://a')], tr,
+                     st=settings(alert_max_per_cycle=1))
+        rep = report(*[
+            outcome(STATUS_CHANGED, target=f'船{i}', voyages=[voyage(code=f'V{i}')],
+                    changes={f'V{i}': [FieldChange('etb_raw', 'ETB', '旧ETB', '新ETB'),
+                                      FieldChange('etd_raw', 'ETD', '旧ETD', '新ETD')]})
+            for i in range(6)])
+        n.notify_cycle(rep)
+        self.assertEqual(len(tr.calls), 6)
+        for i, (_, payload) in enumerate(tr.calls):
+            self.assertIn(f'船{i}', payload['text'])
+            self.assertIn('新ETB', payload['text'])
+            self.assertIn('新ETD', payload['text'])
+
+    def test_failed_batch_does_not_mark_sent_or_skip_next_batch(self):
+        tr = RecordingTransport()
+        def transport(url, payload):
+            if '船0' in payload['text']:
+                raise RuntimeError('发送失败')
+            return tr(url, payload)
+        n = notifier([NotifyChannel(kind='webhook', url='https://a')], transport,
+                     st=settings(alert_max_per_cycle=1))
+        rep = report(outcome(STATUS_MISSING, target='船0'),
+                     outcome(STATUS_MISSING, target='船1'))
+        results = n.notify_cycle(rep)
+        self.assertEqual([r.ok for r in results], [False, True])
+        self.assertTrue(n.throttle.should_send(rep.outcomes[0]))
+        self.assertFalse(n.throttle.should_send(rep.outcomes[1]))
 
     def test_no_channels_is_a_no_op(self):
         n = notifier([])

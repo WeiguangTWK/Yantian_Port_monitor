@@ -303,8 +303,7 @@ def send_windows(ch: NotifyChannel, msg: AlertMessage) -> None:
     所以它适合"托盘常驻程序"，不适合无人值守的后台任务。
     失败时会抛出带解释的异常，不会假装成功。
 
-    气泡正文有长度上限（Windows 定死 255 字符），超了会被截断。
-    真正需要完整内容时应该配一个能承载长文本的通道。
+    气泡正文上限为 255 个 UTF-16 单元；长消息拆分发送，避免丢失后面的变化。
     """
     if ch.persistent:
         raise RuntimeError("保持显示通知仅支持 GUI，请运行 GUI 或关闭 persistent。")
@@ -314,7 +313,27 @@ def send_windows(ch: NotifyChannel, msg: AlertMessage) -> None:
     title = msg.title
     if "错误" in title or "停摆" in title:
         level = "warning"
-    show(title, msg.text, hold_seconds=ch.hold_seconds, level=level)
+    chunks = windows_text_chunks(msg.text)
+    for index, text in enumerate(chunks, 1):
+        suffix = f' ({index}/{len(chunks)})' if len(chunks) > 1 else ''
+        show(title[:40] + suffix, text, hold_seconds=ch.hold_seconds, level=level)
+
+
+def windows_text_chunks(text: str) -> list[str]:
+    """按 Windows WCHAR 容量拆分正文，不切断非 BMP 字符。"""
+    chunks = []
+    current = []
+    units = 0
+    for char in text:
+        size = 2 if ord(char) > 0xffff else 1
+        if units + size > 255:
+            chunks.append(''.join(current))
+            current, units = [], 0
+        current.append(char)
+        units += size
+    if current or not chunks:
+        chunks.append(''.join(current))
+    return chunks
 
 
 def build_payload(ch: NotifyChannel, msg: AlertMessage) -> tuple[str, dict]:
@@ -475,21 +494,19 @@ class Notifier:
             return []
 
         limit = max(1, int(getattr(self.settings, "alert_max_per_cycle", 5)))
-        if len(fresh) > limit:
-            self._emit("log", level="warn",
-                       message=f"本轮 {len(fresh)} 条告警超过上限 {limit}，只发前 {limit} 条")
-            fresh = fresh[:limit]
-
-        msg = build_alert(_subset(rep, fresh), alert_on)
-        if msg is None:
-            return []
-
-        results = self.send(msg)
-        # 只有真的发出去了才记账；全通道失败时不记，
-        # 让下一轮能重试（网络抖动不该吃掉一条告警）。
-        if any(r.ok for r in results):
-            for o in fresh:
-                self.throttle.mark_sent(o)
+        results = []
+        # 旧上限改为每批大小，不能丢弃同轮后面的真实变化。
+        for start in range(0, len(fresh), limit):
+            batch = fresh[start:start + limit]
+            msg = build_alert(_subset(rep, batch), alert_on)
+            if msg is None:
+                continue
+            sent = self.send(msg)
+            results.extend(sent)
+            # 仅给至少一个渠道成功送出的这一批记账。
+            if any(r.ok for r in sent):
+                for o in batch:
+                    self.throttle.mark_sent(o)
         self.throttle.save()
         return results
 

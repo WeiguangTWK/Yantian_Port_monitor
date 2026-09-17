@@ -95,7 +95,7 @@ class Settings:
     alert_cooldown_seconds: int = 3600
     alert_state_file: str = "state/alert_state.json"
     # 每轮最多发几条告警，防止首次运行时一次性轰炸
-    alert_max_per_cycle: int = 5
+    alert_max_per_cycle: int = 5  # 兼容旧键名：每批目标数，超出后继续分批发送
     # 查询失败要连续几轮才告警。设成 1 = 第一次失败就叫。
     # 默认 2：实测站点会偶发降级/限流（HTTP 567、会话被弹回），
     # 一次失败就叫人等于狼来了，用不了多久告警就会被无视。
