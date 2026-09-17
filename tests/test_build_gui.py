@@ -83,7 +83,7 @@ class TestGuiOutputVerification(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             output = pathlib.Path(directory)
             runtime = output / '_internal-gui'
-            for relative in build_gui.REQUIRED_RESOURCES:
+            for relative in build_gui.REQUIRED_RESOURCES + ['gui-version.txt']:
                 path = runtime / relative
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_bytes(b'fixture')

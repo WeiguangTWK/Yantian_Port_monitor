@@ -44,6 +44,7 @@ import sys
 import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
 
 # 冻结时必须显式补的隐藏导入 —— 不补会报 No module named 'win32com'
 # （原因：qfluentwidgets 的依赖 qframelesswindow 用了
@@ -52,7 +53,8 @@ HIDDEN_IMPORTS = ["win32con", "pythoncom", "pywintypes", "PySide2.QtSvg"]
 COLLECT_SUBMODULES = ["win32comext", "ytmon"]
 COLLECT_ALL = ["qfluentwidgets"]
 COPY_METADATA = ["PySide2", "PySide2-Fluent-Widgets"]
-GUI_DATA = [("gui/assets", "gui/assets"), ("LICENSE", "."), ("licenses", "licenses")]
+GUI_DATA = [("gui/assets", "gui/assets"), ("LICENSE", "."), ("licenses", "licenses"),
+            (".toolchain/gui-version.txt", ".")]
 REQUIRED_RESOURCES = [
     "gui/assets/home.svg", "gui/assets/ship.svg", "gui/assets/monitor.svg",
     "gui/assets/notify.svg", "gui/assets/about.svg", "gui/assets/newguilun_logo.jpg",
@@ -163,10 +165,23 @@ def build_command(name: str, windowed: bool, dist_root: pathlib.Path,
     return cmd
 
 
+def prepare_version_file() -> str:
+    """每次构建刷新版本，不使用上一次构建残留的标识。"""
+    from ytmon.version import repo_commit
+    commit = repo_commit(ROOT)
+    if commit is None:
+        raise RuntimeError('无法读取本仓库 HEAD，请在含 Git 历史的源码仓库中构建并确认 Git 可用。')
+    destination = ROOT / '.toolchain' / 'gui-version.txt'
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(commit + '\n', encoding='ascii')
+    return commit
+
+
 def verify_gui_output(out_dir: pathlib.Path, contents_directory="_internal") -> None:
     """关键资源缺失时中止交付；不代替 GUI 运行及实机验证。"""
     runtime = out_dir / contents_directory
-    missing = [relative for relative in REQUIRED_RESOURCES if not (runtime / relative).is_file()]
+    missing = [relative for relative in REQUIRED_RESOURCES + ['gui-version.txt']
+               if not (runtime / relative).is_file()]
     for package in COPY_METADATA:
         prefix = package.lower().replace('-', '_') + '_'
         if not any(p.is_dir() and p.name.lower().replace('-', '_').startswith(prefix)
@@ -229,6 +244,7 @@ def main(argv: "list[str]") -> int:
             return 2
 
     dist_root = pathlib.Path(args.dist) if args.dist else (ROOT / "dist" / "gui")
+    prepare_version_file()
     cmd = build_command(args.name, not args.console, dist_root)
     env = build_env()
 

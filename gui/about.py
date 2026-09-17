@@ -7,7 +7,7 @@ from importlib.metadata import PackageNotFoundError, version
 from qt_compat import BINDING, QT_VERSION, QtCore, QtGui, QtWidgets, exec_app
 from qfluentwidgets import (BodyLabel, CaptionLabel, CardWidget, MessageBoxBase,
                             PushButton, ScrollArea, SubtitleLabel, TextEdit)
-from ytmon import __version__
+from ytmon.version import display_version
 
 SOURCE_URL = 'https://github.com/WeiguangTWK/Yantian_Port_monitor'
 RESOURCE_ROOT = (pathlib.Path(sys._MEIPASS) if getattr(sys, 'frozen', False)
@@ -52,7 +52,7 @@ class AboutPage(QtWidgets.QWidget):
             return widget, box
 
         info, box = card('盐田船期监控', [
-            '版本 %s' % __version__,
+            '版本 %s' % display_version(),
             '按船名或码头航次查询船期，比较变化并发送通知。',
             '运行环境：Python %s · %s %s · Qt %s' % (
                 sys.version.split()[0], BINDING, package_version(BINDING), QT_VERSION),

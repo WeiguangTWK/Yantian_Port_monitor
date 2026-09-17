@@ -166,6 +166,7 @@ def pyinstaller_argv(target: dict, staging: pathlib.Path, spec_dir: pathlib.Path
 
 def build_targets(staging: pathlib.Path) -> "dict[str, pathlib.Path]":
     """构建三个目标，返回 {name: 产物目录}。"""
+    build_gui.prepare_version_file()
     spec_dir = staging / "spec"
     spec_dir.mkdir(parents=True, exist_ok=True)
     env = build_gui.build_env()
