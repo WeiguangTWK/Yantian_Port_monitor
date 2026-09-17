@@ -10,6 +10,7 @@ from __future__ import annotations
 import glob
 import os
 import pathlib
+import sys
 
 # (安装根目录, 可执行文件名)。Chromium 系各家布局都是 <root>\<版本>\<exe>，
 # 便携版则直接放 <root>\<exe>。
@@ -25,9 +26,13 @@ CANDIDATES: list[tuple[str, str]] = [
     # Supermium —— Win7 上的主力选择（内核跟进到 Chromium 138）
     (r"C:\Program Files\Supermium", "supermium.exe"),
     (r"C:\Program Files (x86)\Supermium", "supermium.exe"),
+    (r"C:\Program Files\Supermium", "chrome.exe"),
+    (r"C:\Program Files (x86)\Supermium", "chrome.exe"),
     (r"C:\Supermium", "supermium.exe"),
     (r"C:\Supermium\App", "supermium.exe"),
     (r"C:\Tools\Supermium", "supermium.exe"),
+    (r"C:\Supermium", "chrome.exe"),
+    (r"C:\Tools\Supermium", "chrome.exe"),
     # Chromium 原版
     (r"C:\Program Files\Chromium\Application", "chrome.exe"),
     (r"C:\Program Files (x86)\Chromium\Application", "chrome.exe"),
@@ -41,6 +46,8 @@ LOCAL_SUBDIRS: list[tuple[str, str]] = [
     (r"Microsoft\Edge\Application", "msedge.exe"),
     (r"Supermium", "supermium.exe"),
     (r"Supermium\Application", "supermium.exe"),
+    (r"Supermium", "chrome.exe"),
+    (r"Supermium\Application", "chrome.exe"),
 ]
 
 BROWSER_NOTE = (
@@ -82,7 +89,20 @@ def search_roots() -> list[str]:
     """按优先级返回找到的候选（已排重、只留真实文件）。"""
     found: list[str] = []
     for root, exe in CANDIDATES:
-        found.extend(_expand(root, exe))
+        # 系统盘和安装目录可以不是 C:；64 位系统兼顾两个 Program Files。
+        prefix32 = 'C:\\Program Files (x86)'
+        prefix64 = 'C:\\Program Files'
+        if root.startswith(prefix32):
+            bases = [os.environ.get('ProgramFiles(x86)', prefix32)]
+            suffix = root[len(prefix32):].lstrip('\\')
+        elif root.startswith(prefix64):
+            bases = [os.environ.get('ProgramW6432'), os.environ.get('ProgramFiles', prefix64)]
+            suffix = root[len(prefix64):].lstrip('\\')
+        else:
+            bases, suffix = [root], ''
+        for base in bases:
+            if base:
+                found.extend(_expand(os.path.join(base, suffix) if suffix else base, exe))
 
     local = os.environ.get("LOCALAPPDATA")
     if local:
@@ -98,6 +118,32 @@ def search_roots() -> list[str]:
         seen.add(rp)
         uniq.append(p)
     return uniq
+
+
+def is_windows7() -> bool:
+    if sys.platform != 'win32':
+        return False
+    version = sys.getwindowsversion()
+    return (version.major, version.minor) == (6, 1)
+
+
+def browser_brand(path: str) -> str:
+    """按候选安装位置识别名称；不宣称完成了浏览器身份或兼容性验证。"""
+    parts = path.replace('\\', '/').lower().split('/')
+    if 'supermium' in parts or parts[-1] == 'supermium.exe':
+        return 'Supermium'
+    if parts[-1] == 'msedge.exe':
+        return 'Edge'
+    return 'Chrome' if 'google' in parts else 'Chromium'
+
+
+def select_browser(found: list[str], windows7: bool) -> str:
+    preferred = ('Supermium', 'Edge') if windows7 else ('Edge', 'Supermium')
+    for brand in preferred + ('Chrome', 'Chromium'):
+        candidates = [path for path in found if browser_brand(path) == brand]
+        if candidates:
+            return max(candidates, key=version_key)
+    raise FileNotFoundError('没有浏览器候选文件。')
 
 
 def find_browser(explicit: str | None = None) -> str:
@@ -119,7 +165,7 @@ def find_browser(explicit: str | None = None) -> str:
             "未找到任何 Chromium 系浏览器（Edge / Chrome / Chromium / Supermium）。\n"
             f"        {BROWSER_NOTE}"
         )
-    return max(found, key=version_key)
+    return select_browser(found, is_windows7())
 
 
 def probe_browser(path: str, timeout: float = 40.0) -> tuple[str, str]:

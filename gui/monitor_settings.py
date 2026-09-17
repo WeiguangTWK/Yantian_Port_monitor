@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from qt_compat import QtWidgets, Signal
 from gui.monitor_config import MonitorConfig, NUMERIC_FIELDS
+from ytmon.browser_find import browser_brand, find_browser
 from qfluentwidgets import (BodyLabel, CaptionLabel, CardWidget, CheckBox,
                             DoubleSpinBox, LineEdit, PrimaryPushButton, PushButton,
                             ScrollArea, SpinBox, SubtitleLabel)
@@ -78,6 +79,13 @@ class MonitorSettingsPage(QtWidgets.QWidget):
         path_row.addWidget(self.browser, 1)
         path_row.addWidget(browse)
         form.addRow(BodyLabel('浏览器路径', widget), path_row)
+        self.browser_detected = CaptionLabel(widget)
+        self.browser_detected.setWordWrap(True)
+        form.addRow(self.browser_detected)
+        detect = PushButton('重新检测', widget)
+        detect.clicked.connect(self.detect_browser)
+        form.addRow(detect)
+        self.browser.textChanged.connect(self.detect_browser)
         self.headless = CheckBox('无头模式（不显示引导窗口）', widget)
         form.addRow(self.headless)
         layout.addStretch(1)
@@ -102,6 +110,17 @@ class MonitorSettingsPage(QtWidgets.QWidget):
             self, '选择浏览器', self.browser.text(), '可执行文件 (*.exe)')
         if filename:
             self.browser.setText(filename)
+
+    def detect_browser(self):
+        explicit = self.browser.text().strip()
+        try:
+            path = find_browser(explicit or None)
+        except (OSError, ValueError) as error:
+            self.browser_detected.setText(str(error))
+            return
+        self.browser_detected.setText('%s：%s\n%s（仅检查文件存在，未验证启动或查询兼容性）' % (
+            '手动路径' if explicit else '自动检测到 ' + browser_brand(path), path,
+            '手动路径优先' if explicit else 'Win7 优先 Supermium，其他系统优先 Edge'))
 
     def set_busy(self, busy):
         self.busy = busy
@@ -134,6 +153,7 @@ class MonitorSettingsPage(QtWidgets.QWidget):
         for key, control in self.inputs.items():
             control.setValue(values[key])
         self.browser.setText(values['edge_path'] or '')
+        self.detect_browser()
         self.headless.setChecked(values['headless'])
         self.loaded = True
         self.save_button.setEnabled(True)
