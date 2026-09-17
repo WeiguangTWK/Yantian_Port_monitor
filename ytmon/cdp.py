@@ -110,7 +110,9 @@ class Browser:
     def __init__(self, edge_path: str | None = None, profile_dir: str = ".browser_profile",
                  port: int | None = None, headless: bool = True):
         self.browser_path = find_browser(edge_path)
-        self.profile_dir = str(pathlib.Path(profile_dir).resolve())
+        # Windows / Python 3.8 的 resolve() 可能保留不存在目录的相对路径。
+        # 创建目录前先转为绝对路径，避免首次启动与后续启动传入不同路径。
+        self.profile_dir = str(pathlib.Path(profile_dir).absolute().resolve())
         self.port = port or find_free_port()
         self.headless = headless
         self.proc: subprocess.Popen | None = None
