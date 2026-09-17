@@ -22,6 +22,7 @@ class TestMonitorConfig(unittest.TestCase):
         store = MonitorConfig(self.path)
         values = store.values()
         self.assertEqual(values['watch_interval_seconds'], 600)
+        self.assertFalse(values['close_to_tray'])
         values['watch_interval_seconds'] = 1800
         store.save_values(values)
         raw = json.loads(self.path.read_text('utf-8'))
@@ -56,13 +57,23 @@ class TestMonitorConfig(unittest.TestCase):
         for key, value in [('watch_interval_seconds', 0), ('watch_interval_seconds', 5.5),
                            ('max_pages', 0), ('retry_attempts', -1),
                            ('watch_jitter_seconds', float('nan')),
-                           ('headless', 'true'), ('edge_path', 123)]:
+                           ('headless', 'true'), ('close_to_tray', 'true'), ('edge_path', 123)]:
             with self.subTest(key=key, value=value):
                 values = store.values()
                 values[key] = value
                 with self.assertRaises(ValueError):
                     store.save_values(values)
         self.assertFalse(self.path.exists())
+
+    def test_tray_option_roundtrip(self):
+        from ytmon.config import AppConfig
+        store = MonitorConfig(self.path)
+        values = store.values()
+        values['close_to_tray'] = True
+        store.save_values(values)
+        self.assertTrue(AppConfig.load(self.path).settings.close_to_tray)
+        store.reload()
+        self.assertTrue(store.values()['close_to_tray'])
 
     def test_external_change_requires_reload(self):
         store = MonitorConfig(self.path)

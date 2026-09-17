@@ -65,6 +65,11 @@ class MonitorSettingsPage(QtWidgets.QWidget):
         widget, form = card('监听计划', 'CLI 的循环间隔仍由 --watch 指定，不会自动读取这里的 GUI 间隔。')
         number(form, widget, 'watch_interval_seconds', '监听间隔', ' 秒')
         number(form, widget, 'watch_jitter_seconds', '额外随机等待上限', ' 秒')
+        self.close_to_tray = CheckBox('关闭窗口后驻留系统托盘，继续后台监听', widget)
+        form.addRow(self.close_to_tray)
+        tray_hint = CaptionLabel('默认关闭。开启后关窗仅隐藏界面；从托盘菜单退出程序。不自动开始监听，也不设置开机自启。', widget)
+        tray_hint.setWordWrap(True)
+        form.addRow(tray_hint)
         widget, form = card('查询与重试', '起始日为今天减去回溯天数；增加分页会增加站点请求。限流时采用退避重试。')
         number(form, widget, 'etb_back_days', '回溯天数', ' 天')
         number(form, widget, 'max_pages', '最多查询分页', ' 页')
@@ -155,6 +160,7 @@ class MonitorSettingsPage(QtWidgets.QWidget):
         self.browser.setText(values['edge_path'] or '')
         self.detect_browser()
         self.headless.setChecked(values['headless'])
+        self.close_to_tray.setChecked(values['close_to_tray'])
         self.loaded = True
         self.save_button.setEnabled(True)
         self.message.setText('设置已加载。修改后点击“保存设置”生效。')
@@ -163,7 +169,8 @@ class MonitorSettingsPage(QtWidgets.QWidget):
         if self.busy or not self.loaded:
             return
         values = {key: control.value() for key, control in self.inputs.items()}
-        values.update(edge_path=self.browser.text(), headless=self.headless.isChecked())
+        values.update(edge_path=self.browser.text(), headless=self.headless.isChecked(),
+                      close_to_tray=self.close_to_tray.isChecked())
         try:
             self.store.save_values(values)
         except (OSError, ValueError) as error:

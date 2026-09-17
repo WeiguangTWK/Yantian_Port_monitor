@@ -17,7 +17,7 @@ NUMERIC_FIELDS = {
     'retry_attempts': (0, 100, True),
     'retry_backoff_seconds': (0, 86400, False),
 }
-EDITABLE_FIELDS = frozenset(NUMERIC_FIELDS) | {'edge_path', 'headless'}
+EDITABLE_FIELDS = frozenset(NUMERIC_FIELDS) | {'edge_path', 'headless', 'close_to_tray'}
 
 
 class MonitorConfig(TargetConfig):
@@ -39,8 +39,9 @@ class MonitorConfig(TargetConfig):
                 raise ValueError('%s 必须为%s。' % (key, '整数' if integer else '数值'))
             if not minimum <= value <= maximum:
                 raise ValueError('%s 必须在 %s 到 %s 之间。' % (key, minimum, maximum))
-        if not isinstance(values['headless'], bool):
-            raise ValueError('headless 必须为布尔值。')
+        for key in ('headless', 'close_to_tray'):
+            if not isinstance(values[key], bool):
+                raise ValueError('%s 必须为布尔值。' % key)
         path = values['edge_path']
         if path is not None and not isinstance(path, str):
             raise ValueError('浏览器路径必须为字符串或 null。')

@@ -49,6 +49,7 @@ from targets import TargetsPage                                   # noqa: E402
 from monitor_settings import MonitorSettingsPage                  # noqa: E402
 from notifications import NotificationsPage                       # noqa: E402
 from about import AboutPage                                       # noqa: E402
+from gui.tray_icon import TrayIconTheme                           # noqa: E402
 from gui.notification_transport import dispatch_windows           # noqa: E402
 from gui.persistent_notifications import PersistentNotifications   # noqa: E402
 from gui.monitor_runtime import Countdown, row_status             # noqa: E402
@@ -416,6 +417,17 @@ class MonitorPage(QWidget):
 class MainWindow(FluentWindow):
     def __init__(self, cfg: AppConfig):
         super().__init__()
+        self.exit_requested = False
+        QApplication.instance().setQuitOnLastWindowClosed(False)
+        self.tray = QtWidgets.QSystemTrayIcon(QtGui.QIcon(str(ASSET_DIR / "ship.svg")), self)
+        self.tray_theme = TrayIconTheme(self.tray, QtGui.QIcon(str(ASSET_DIR / "ship.svg")), self)
+        self.tray.setToolTip('盐田船期监控')
+        self.tray_menu = QtWidgets.QMenu(self)
+        self.tray_menu.addAction('打开窗口', self._restore_window)
+        self.tray_menu.addSeparator()
+        self.tray_menu.addAction('退出程序', self._request_exit)
+        self.tray.setContextMenu(self.tray_menu)
+        self.tray.activated.connect(self._tray_activated)
         self.persistent_notifications = PersistentNotifications(self)
         self.monitor_page = MonitorPage(cfg, self)
         self.monitor_page.persistent_notification.connect(self.persistent_notifications.show_message)
@@ -439,6 +451,8 @@ class MainWindow(FluentWindow):
         self.addSubInterface(self.notifications_page, QtGui.QIcon(str(ASSET_DIR / "notify.svg")), "通知与测试")
         self.monitor_page.busy_changed.connect(self.notifications_page.set_busy)
         self.notifications_page.testing_changed.connect(self._notification_testing)
+        self.monitor_page.busy_changed.connect(self._try_pending_exit)
+        self.notifications_page.testing_changed.connect(self._try_pending_exit)
         self.notifications_page.changed.connect(self._notifications_saved)
         self.targets_page.changed.connect(self.notifications_page.refresh_snapshot)
         self.settings_page.changed.connect(self.notifications_page.refresh_snapshot)
@@ -448,6 +462,30 @@ class MainWindow(FluentWindow):
 
         self.resize(1080, 720)
         self.setWindowTitle(f"盐田船期监控  ·  {BINDING} / Qt {QT_VERSION}")
+        self._sync_tray()
+
+    def _sync_tray(self):
+        enabled = self.monitor_page.cfg.settings.close_to_tray is True
+        self.tray.setVisible(enabled and self.tray.isSystemTrayAvailable())
+        self.tray_theme.set_enabled(enabled)
+
+    def _restore_window(self):
+        self.showNormal()
+        self.raise_()
+        self.activateWindow()
+
+    def _tray_activated(self, reason):
+        if reason in (QtWidgets.QSystemTrayIcon.Trigger, QtWidgets.QSystemTrayIcon.DoubleClick):
+            self._restore_window()
+
+    def _request_exit(self):
+        self.exit_requested = True
+        self.close()
+
+    def _try_pending_exit(self, busy=False):
+        if self.exit_requested and not self.monitor_page.querying and not self.notifications_page.testing:
+            # 等 finished 的清理槽完成后，再关窗口和 Qt 事件循环。
+            QtCore.QTimer.singleShot(0, self.close)
 
     def _notification_testing(self, busy):
         self.targets_page.set_busy(busy)
@@ -478,16 +516,35 @@ class MainWindow(FluentWindow):
             self.monitor_page.append_log(f"配置读取失败：{error}")
             return
         self.monitor_page.configuration_changed()
+        self._sync_tray()
 
     def closeEvent(self, event):
+        if not self.exit_requested and self.monitor_page.cfg.settings.close_to_tray is True:
+            if not self.tray.isSystemTrayAvailable():
+                event.ignore()
+                self.monitor_page._toast('系统托盘不可用', '窗口保持打开；请在监听设置中关闭托盘驻留后退出。', error=True)
+                return
+            self.tray.show()
+            self.tray_theme.set_enabled(True)
+            event.ignore()
+            self.hide()
+            self.monitor_page.append_log('窗口已隐藏至系统托盘，当前监听状态保持不变')
+            return
         self.monitor_page._stop_watch()
         if self.monitor_page.querying or self.notifications_page.testing:
+            self.exit_requested = True
+            self.setEnabled(False)
             event.ignore()
-            self.monitor_page._toast('后台任务尚未结束', '已停止自动监听，请等待查询或测试推送完成后再关闭。')
+            self._restore_window()
+            self.monitor_page.append_log('正在退出：已停止自动监听，等待当前后台任务结束')
             return
         self.monitor_page.timer.stop()
+        self.tray_theme.timer.stop()
         self.persistent_notifications.close_all()
+        self.tray.hide()
         super().closeEvent(event)
+        if event.isAccepted():
+            QApplication.instance().quit()
 
 
 def main() -> int:

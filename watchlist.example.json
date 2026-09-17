@@ -36,6 +36,7 @@
   "_settings说明": [
     "settings 均可省略，默认值见 ytmon/config.py。",
     "edge_path：浏览器 exe 路径；headless=false 显示引导窗口。",
+    "close_to_tray：GUI 关窗后驻留托盘，默认 false；托盘菜单退出才停止程序。",
     "retry_attempts：限流退避重试次数；watch_jitter_seconds：循环额外随机等待上限。",
     "alert_on：告警状态；alert_error_after：连续错误阈值；alert_cooldown_seconds：冷却时间。",
     "stale_after_hours：恢复运行时检测长时间未成功查询；heartbeat_hours：定期运行消息。",
@@ -46,6 +47,7 @@
     "etb_back_days": 7,
     "edge_path": null,
     "headless": true,
+    "close_to_tray": false,
     "retry_attempts": 2,
     "watch_jitter_seconds": 30,
     "alert_on": [
