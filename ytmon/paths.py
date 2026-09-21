@@ -37,6 +37,18 @@ def is_frozen() -> bool:
     return bool(getattr(sys, "frozen", False))
 
 
+def system_program_env() -> dict[str, str]:
+    """外部系统程序不用冻结包自己的 Linux 动态库搜索路径。"""
+    env = dict(os.environ)
+    if is_frozen() and sys.platform.startswith("linux"):
+        original = env.get("LD_LIBRARY_PATH_ORIG")
+        if original is None:
+            env.pop("LD_LIBRARY_PATH", None)
+        else:
+            env["LD_LIBRARY_PATH"] = original
+    return env
+
+
 def app_base_dir() -> pathlib.Path:
     """配置与数据的基准目录。
 

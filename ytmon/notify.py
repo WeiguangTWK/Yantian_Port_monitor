@@ -38,6 +38,7 @@ from email.utils import formatdate
 
 from .config import NotifyChannel
 from .heartbeat import HeartbeatState, ping
+from .paths import system_program_env
 from .service import (STATUS_CHANGED, STATUS_ERROR, STATUS_FIRST,
                       STATUS_LABEL, STATUS_MISSING, CycleReport,
                       TargetOutcome)
@@ -333,7 +334,8 @@ def send_linux(ch: NotifyChannel, msg: AlertMessage) -> None:
     args = [command, '-a', '盐田船期监控', '-t', str(round(ch.hold_seconds * 1000)),
             '--', msg.title, msg.text]
     try:
-        result = subprocess.run(args, capture_output=True, text=True, timeout=10)
+        result = subprocess.run(args, capture_output=True, text=True, timeout=10,
+                                env=system_program_env())
     except subprocess.TimeoutExpired as error:
         raise RuntimeError('桌面通知服务 10 秒内未响应') from error
     if result.returncode:

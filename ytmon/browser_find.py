@@ -13,6 +13,8 @@ import pathlib
 import shutil
 import sys
 
+from .paths import system_program_env
+
 # (安装根目录, 可执行文件名)。Chromium 系各家布局都是 <root>\<版本>\<exe>，
 # 便携版则直接放 <root>\<exe>。
 CANDIDATES: list[tuple[str, str]] = [
@@ -239,7 +241,8 @@ def probe_browser(path: str, timeout: float = 40.0) -> tuple[str, str]:
         "about:blank",
     ]
     try:
-        proc = subprocess.run(args, capture_output=True, timeout=timeout)
+        proc = subprocess.run(args, capture_output=True, timeout=timeout,
+                              env=system_program_env())
     except FileNotFoundError as e:
         # 路径明明存在却报"找不到文件" —— 几乎总是缺依赖库
         return PROBE_FAIL, (

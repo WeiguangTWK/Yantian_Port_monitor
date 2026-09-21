@@ -109,10 +109,16 @@ Win7 使用 Python 3.8 和兼容浏览器，依赖见 requirements-win7*.txt。[
 
 Linux/LoongArch GUI 仍处于试验阶段。Linux 启动前会直接选择 PySide6，不导入 PySide2；Windows 仍优先 PySide2，保持 Win7 路线。AOSC 试验机可使用发行版提供的 PySide6、aiohttp、Chromium，并在复用系统包的虚拟环境中安装 `PySide6-Fluent-Widgets`。不要在同一环境安装两种绑定版本的 Fluent Widgets。Linux 留空浏览器路径时会从 `PATH` 自动查找 Chromium 系浏览器，优先 `chromium`；也可手动填写可执行文件完整路径。AOSC 实机已验证开窗、页面切换和手动指定 `/usr/bin/chromium` 后的船期查询；自动发现、托盘与 Linux 打包尚未实机验收。
 
-tools/make_bundle.py 生成源码交付包，tools/build_gui.py 和 tools/build_release.py 用于构建程序。
+在 Linux 目标机的源码仓库中构建 Linux GUI：
+
+```sh
+python tools/build_linux_gui.py --dry-run
+python tools/build_linux_gui.py
+./dist/linux/ytmon-gui/ytmon-gui
+```
+
+复制交付时要保留整个 `dist/linux/ytmon-gui/` 文件夹，并放在当前用户可写的位置；浏览器仍调用系统安装的 Chromium，Linux 桌面通知仍调用系统 `notify-send`。建议先在桌面会话中测试 GUI、自动发现浏览器、查询和通知；SSH 会话缺少桌面环境变量时可能无法显示窗口或通知。Linux 冻结程序启动外部系统程序时会恢复原始动态库搜索路径，避免打包的 Qt 等库干扰系统浏览器和通知程序。
+
+tools/make_bundle.py 生成源码交付包，tools/build_gui.py 和 tools/build_release.py 用于 Windows 构建；tools/build_linux_gui.py 用于 Linux 原生 GUI 构建。
 
 两条 GUI 构建路径共用资源、隐藏导入和依赖版本元数据配置，并在构建后检查图标、Logo、许可文件及 SVG/JPEG 插件。完整现场包的离线 wheels 包含 GUI 依赖。交付须复制整个 onedir 文件夹，不能只复制 EXE。资源检查不等于运行验证：发布前仍须在无开发环境依赖的机器上检查页面、通知和浏览器引导，确认与源码运行效果一致。
-
-以下为历史记录，不作为当前运行指南，也不进入源码交付包：
-
-- [站点勘察](RECON-盐田船期.md)

@@ -16,6 +16,7 @@ import time
 import aiohttp
 
 from .browser_find import find_browser
+from .paths import system_program_env
 
 # 兼容旧名字（本模块曾有 find_edge / find_browser 两套）
 find_edge = find_browser
@@ -205,7 +206,8 @@ class Browser:
                 self.port = find_free_port(self.port + 1)
             self.proc = subprocess.Popen(
                 self._build_args(flag),
-                stdout=self._log_file, stderr=subprocess.STDOUT)
+                stdout=self._log_file, stderr=subprocess.STDOUT,
+                env=system_program_env())
             self._session = aiohttp.ClientSession()
             try:
                 ws_url = await self._wait_for_target(timeout=30)
