@@ -16,11 +16,9 @@ from dataclasses import asdict, dataclass, field, fields
 VALID_TYPES = ("ship", "voyage")
 DEFAULT_CONFIG_PATH = "watchlist.json"
 
-# 告警通道类型。除 windows 外全部只用标准库 + requests 实现，
-# 因此在 Win7 + Python 3.8 上一样能跑（不需要任何新依赖）。
-# windows = 系统原生通知（托盘气泡），也是纯 ctypes，零依赖。
-VALID_CHANNELS = ("webhook", "dingtalk", "wecom", "feishu", "email", "windows")
-# 需要 url 的通道（email 走 SMTP、windows 走系统托盘，都不用 url）
+# windows 使用系统托盘；linux 使用桌面通知服务的 notify-send。
+VALID_CHANNELS = ("webhook", "dingtalk", "wecom", "feishu", "email", "windows", "linux")
+# 需要 url 的通道（email 和本地桌面通知都不用 url）
 URL_CHANNELS = ("webhook", "dingtalk", "wecom", "feishu")
 # 可以作为告警触发条件的状态
 VALID_ALERT_ON = ("changed", "missing", "error", "first")
@@ -161,7 +159,7 @@ class NotifyChannel:
     mail_to: list[str] = field(default_factory=list)
     use_ssl: bool = True
 
-    # windows 通道专用：托盘图标的消息处理时长；实际气泡时长由系统决定。
+    # 本地通知专用：Windows 为托盘消息处理时长；Linux 为请求的显示时长。
     hold_seconds: float = 5.0
     # GUI 使用独立浮窗，直到手动关闭或程序退出。
     persistent: bool = False
@@ -184,10 +182,10 @@ class NotifyChannel:
             return errs
         if self.kind in URL_CHANNELS and not self.url.strip():
             errs.append(f"{self.kind} 通道缺少 url")
-        if self.kind == "windows" and self.url.strip():
-            # 只有 windows 是"有 url 一定是搞错了"的通道，明确拦下来，
+        if self.kind in ("windows", "linux") and self.url.strip():
+            # 本地通知不走 URL，明确拦下来，
             # 免得用户以为那个 url 起了作用。
-            errs.append("windows 通道不用 url（它走系统托盘），填了会被忽略；"
+            errs.append(f"{self.kind} 通道不用 url（它走本地系统通知）；"
                         "要发到别处请另加一个通道")
         if self.kind == "email":
             if not self.smtp_host.strip():
@@ -196,8 +194,8 @@ class NotifyChannel:
                 errs.append("email 通道缺少 mail_to")
             if self.smtp_port <= 0:
                 errs.append("email 通道的 smtp_port 不合法")
-        if self.kind == "windows" and self.hold_seconds < 0:
-            errs.append("windows 通道的 hold_seconds 不能为负")
+        if self.kind in ("windows", "linux") and self.hold_seconds < 0:
+            errs.append(f"{self.kind} 通道的 hold_seconds 不能为负")
         if not isinstance(self.persistent, bool):
             errs.append("persistent 必须为布尔值")
         elif self.persistent and self.kind != "windows":
@@ -231,7 +229,7 @@ def _channel_to_dict(c: NotifyChannel) -> dict:
         v = getattr(c, k)
         if v:
             out[k] = v
-    if c.kind == "windows" and c.hold_seconds != 5.0:
+    if c.kind in ("windows", "linux") and c.hold_seconds != 5.0:
         out["hold_seconds"] = c.hold_seconds
     if c.kind == "windows" and c.persistent:
         out["persistent"] = True

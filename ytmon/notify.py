@@ -319,6 +319,29 @@ def send_windows(ch: NotifyChannel, msg: AlertMessage) -> None:
         show(title[:40] + suffix, text, hold_seconds=ch.hold_seconds, level=level)
 
 
+def send_linux(ch: NotifyChannel, msg: AlertMessage) -> None:
+    """通过当前 Linux 桌面会话的通知服务发送；不等待通知消失。"""
+    import shutil
+    import subprocess
+    import sys
+
+    if not sys.platform.startswith('linux'):
+        raise RuntimeError('Linux 桌面通知只能在 Linux 上使用')
+    command = shutil.which('notify-send')
+    if not command:
+        raise RuntimeError('未找到 notify-send；请安装桌面通知客户端')
+    args = [command, '-a', '盐田船期监控', '-t', str(round(ch.hold_seconds * 1000)),
+            '--', msg.title, msg.text]
+    try:
+        result = subprocess.run(args, capture_output=True, text=True, timeout=10)
+    except subprocess.TimeoutExpired as error:
+        raise RuntimeError('桌面通知服务 10 秒内未响应') from error
+    if result.returncode:
+        detail = (result.stderr or result.stdout or '').strip()
+        raise RuntimeError('桌面通知发送失败（退出码 %s）%s' % (
+            result.returncode, '：' + detail[:300] if detail else ''))
+
+
 def windows_text_chunks(text: str) -> list[str]:
     """按 Windows WCHAR 容量拆分正文，不切断非 BMP 字符。"""
     chunks = []
@@ -519,6 +542,8 @@ class Notifier:
                     send_email(ch, msg)
                 elif ch.kind == "windows":
                     self.windows_transport(ch, msg)
+                elif ch.kind == "linux":
+                    send_linux(ch, msg)
                 else:
                     url, payload = build_payload(ch, msg)
                     body = self.transport(url, payload)
@@ -602,6 +627,8 @@ def describe(channels: list[NotifyChannel]) -> list[str]:
         state = "启用" if c.enabled else "停用"
         if c.kind == "windows":
             target = _windows_target()
+        elif c.kind == "linux":
+            target = 'Linux 桌面通知（notify-send）'
         elif c.url:
             target = _mask(c.url)
         else:

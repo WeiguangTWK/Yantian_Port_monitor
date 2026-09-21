@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import fields
 import math
+import sys
 from urllib.parse import parse_qs, urlsplit
 
 from gui.target_config import TargetConfig
@@ -12,6 +13,15 @@ from ytmon.config import NotifyChannel, Settings, VALID_ALERT_ON, URL_CHANNELS
 CHANNEL_FIELDS = frozenset(field.name for field in fields(NotifyChannel) if field.name != 'unknown_keys')
 POLICY_RANGES = {'alert_error_after': (1, 10000), 'alert_cooldown_seconds': (0, 2147483647),
                  'alert_max_per_cycle': (1, 10000)}
+
+
+def available_channel_kinds(platform=None):
+    """只筛选新建选项；已保存的异平台渠道仍可读取与管理。"""
+    platform = sys.platform if platform is None else platform
+    local = 'windows' if platform == 'win32' else 'linux' if platform.startswith('linux') else None
+    return tuple(kind for kind in ('windows', 'linux', 'dingtalk', 'wecom',
+                                   'feishu', 'webhook', 'email')
+                 if kind not in ('windows', 'linux') or kind == local)
 
 
 def validate_channel(channel):

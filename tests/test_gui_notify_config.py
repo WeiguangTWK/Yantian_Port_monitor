@@ -8,7 +8,8 @@ import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from gui.notify_config import NotificationConfig, redact, validate_channel
+from gui.notify_config import (NotificationConfig, available_channel_kinds,
+                               redact, validate_channel)
 from ytmon.config import AppConfig, NotifyChannel
 
 
@@ -29,11 +30,28 @@ class TestNotificationConfig(unittest.TestCase):
         self.assertEqual(self.store.channels, [])
 
     def test_all_supported_channels(self):
-        channels = [NotifyChannel(kind='windows'), NotifyChannel(kind='email', smtp_host='smtp.example.invalid', mail_to=['ops@example.invalid'])]
+        channels = [NotifyChannel(kind='windows'), NotifyChannel(kind='linux'),
+                    NotifyChannel(kind='email', smtp_host='smtp.example.invalid', mail_to=['ops@example.invalid'])]
         channels += [NotifyChannel(kind=kind, url='https://example.invalid/hook') for kind in ('dingtalk', 'wecom', 'feishu', 'webhook')]
         for channel in channels:
             self.store.put_channel(channel)
-        self.assertEqual(len(self.store.channels), 6)
+        self.assertEqual(len(self.store.channels), 7)
+
+    def test_new_channel_options_follow_platform(self):
+        self.assertIn('windows', available_channel_kinds('win32'))
+        self.assertNotIn('linux', available_channel_kinds('win32'))
+        self.assertIn('linux', available_channel_kinds('linux'))
+        self.assertNotIn('windows', available_channel_kinds('linux'))
+        self.assertNotIn('windows', available_channel_kinds('darwin'))
+        self.assertNotIn('linux', available_channel_kinds('darwin'))
+        self.assertIn('email', available_channel_kinds('linux'))
+
+    def test_linux_channel_roundtrip(self):
+        self.store.put_channel(NotifyChannel(kind='linux', hold_seconds=8))
+        config = AppConfig.load(self.path)
+        config.save()
+        self.store.reload()
+        self.assertEqual(self.store.channels[0].hold_seconds, 8)
 
     def test_persistent_roundtrip_preserves_duration(self):
         self.store.put_channel(NotifyChannel(kind='windows', persistent=True, hold_seconds=12))

@@ -5,16 +5,17 @@ from __future__ import annotations
 import copy
 
 from qt_compat import QtGui, QtWidgets, QThread, Signal, exec_app
-from gui.notify_config import NotificationConfig, POLICY_RANGES, redact
+from gui.notify_config import NotificationConfig, POLICY_RANGES, available_channel_kinds, redact
 from gui.notification_transport import dispatch_windows
-from ytmon.config import AppConfig, NotifyChannel, VALID_CHANNELS, URL_CHANNELS
+from ytmon.config import AppConfig, NotifyChannel, URL_CHANNELS
 from ytmon.notify import Notifier, test_message
 from qfluentwidgets import (BodyLabel, CaptionLabel, CardWidget, CheckBox, ComboBox,
                             DoubleSpinBox, LineEdit, MessageBox, MessageBoxBase,
                             PrimaryPushButton, PushButton, ScrollArea, SpinBox,
                             SimpleExpandGroupSettingCard, SubtitleLabel, TextEdit)
 
-CHANNEL_NAMES = {'windows': 'Windows 系统通知', 'dingtalk': '钉钉', 'wecom': '企业微信',
+CHANNEL_NAMES = {'windows': 'Windows 系统通知', 'linux': 'Linux 桌面通知',
+                 'dingtalk': '钉钉', 'wecom': '企业微信',
                  'feishu': '飞书', 'webhook': '通用 webhook', 'email': '邮件'}
 
 
@@ -22,7 +23,8 @@ class ChannelEditor(MessageBoxBase):
     def __init__(self, channel=None, parent=None):
         super().__init__(parent)
         self.save_action = None
-        self.base = copy.deepcopy(channel or NotifyChannel(kind='windows'))
+        kinds = available_channel_kinds()
+        self.base = copy.deepcopy(channel or NotifyChannel(kind=kinds[0]))
         self.viewLayout.addWidget(SubtitleLabel('编辑通知渠道' if channel else '新增通知渠道', self.widget))
         self.controls = {}
         self.rows = {}
@@ -30,7 +32,7 @@ class ChannelEditor(MessageBoxBase):
         form.setVerticalSpacing(10)
         self.viewLayout.addLayout(form)
         self.kind = ComboBox(self.widget)
-        for name in VALID_CHANNELS:
+        for name in kinds + ((self.base.kind,) if self.base.kind not in kinds else ()):
             self.kind.addItem(CHANNEL_NAMES[name], userData=name)
         form.addRow(BodyLabel('渠道类型', self.widget), self.kind)
 
@@ -96,15 +98,18 @@ class ChannelEditor(MessageBoxBase):
             visible.add('secret')
         if kind == 'email':
             visible.update(('smtp_host', 'smtp_port', 'smtp_user', 'smtp_password', 'mail_from', 'mail_to', 'use_ssl'))
+        if kind in ('windows', 'linux'):
+            visible.add('hold_seconds')
         if kind == 'windows':
-            visible.update(('hold_seconds', 'persistent'))
+            visible.add('persistent')
         for key, widgets in self.rows.items():
             for widget in widgets:
                 widget.setVisible(key in visible)
         for widget in self.rows['hold_seconds']:
             widget.setEnabled(not self.controls['persistent'].isChecked())
         self.hint.setText('保持显示使用程序浮窗，退出程序时关闭。关闭开关使用系统通知，实际停留时间由 Windows 决定；秒数控制托盘消息处理时长。需要已登录的桌面会话。'
-                          if kind == 'windows' else '非 SSL 邮件会尝试 STARTTLS，服务器不支持时可能明文发送。建议保持 SSL。'
+                          if kind == 'windows' else '通过 notify-send 发送到当前 Linux 桌面会话；秒数是期望停留时间，实际显示由桌面环境决定。'
+                          if kind == 'linux' else '非 SSL 邮件会尝试 STARTTLS，服务器不支持时可能明文发送。建议保持 SSL。'
                           if kind == 'email' else '请填写平台提供的完整机器人地址。密钥保存在本地 watchlist.json，请勿分享。')
 
     def channel(self):
@@ -287,6 +292,8 @@ class NotificationsPage(QtWidgets.QWidget):
             elif channel.kind == 'windows':
                 summary = ('程序浮窗保持显示，直到手动关闭或程序退出。' if channel.persistent else
                            '系统通知：处理时长 %s 秒，实际停留时间由 Windows 决定。' % channel.hold_seconds)
+            elif channel.kind == 'linux':
+                summary = 'Linux 桌面通知：请求停留 %s 秒，实际时长由桌面环境决定。' % channel.hold_seconds
             else:
                 summary = '通知地址：%s；加签密钥：%s' % (
                     '已配置（已隐藏）' if channel.url else '未配置',
