@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import sys
+
 from qt_compat import QtWidgets, Signal
 from gui.monitor_config import MonitorConfig, NUMERIC_FIELDS
 from ytmon.browser_find import browser_brand, find_browser
@@ -78,7 +80,7 @@ class MonitorSettingsPage(QtWidgets.QWidget):
         widget, form = card('浏览器', '浏览器用于获取查询 Cookie。留空路径时自动查找本机兼容浏览器。')
         path_row = QtWidgets.QHBoxLayout()
         self.browser = LineEdit(widget)
-        self.browser.setPlaceholderText('自动查找，或填写浏览器 exe 完整路径')
+        self.browser.setPlaceholderText('自动查找，或填写浏览器可执行文件完整路径')
         browse = PushButton('浏览…', widget)
         browse.clicked.connect(self.browse)
         path_row.addWidget(self.browser, 1)
@@ -111,8 +113,9 @@ class MonitorSettingsPage(QtWidgets.QWidget):
         self.reload()
 
     def browse(self):
+        file_filter = '可执行文件 (*.exe)' if sys.platform == 'win32' else '所有文件 (*)'
         filename, _ = QtWidgets.QFileDialog.getOpenFileName(
-            self, '选择浏览器', self.browser.text(), '可执行文件 (*.exe)')
+            self, '选择浏览器', self.browser.text(), file_filter)
         if filename:
             self.browser.setText(filename)
 
@@ -125,7 +128,9 @@ class MonitorSettingsPage(QtWidgets.QWidget):
             return
         self.browser_detected.setText('%s：%s\n%s（仅检查文件存在，未验证启动或查询兼容性）' % (
             '手动路径' if explicit else '自动检测到 ' + browser_brand(path), path,
-            '手动路径优先' if explicit else 'Win7 优先 Supermium，其他系统优先 Edge'))
+            '手动路径优先' if explicit else (
+                'Linux 优先从 PATH 查找 Chromium' if sys.platform.startswith('linux')
+                else 'Win7 优先 Supermium，其他 Windows 系统优先 Edge')))
 
     def set_busy(self, busy):
         self.busy = busy

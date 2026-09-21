@@ -31,9 +31,24 @@ class TestBrowserSelection(unittest.TestCase):
         self.assertEqual(browser_find.browser_brand(r'C:\Program Files\Supermium\chrome.exe'), 'Supermium')
 
     def test_machine_install_roots_use_environment(self):
-        with patch.dict('os.environ', {'ProgramW6432': r'D:\Apps', 'ProgramFiles': r'D:\Apps',
-                                      'ProgramFiles(x86)': r'D:\Apps32'}, clear=True):
+        with patch.object(browser_find.sys, 'platform', 'win32'), patch.dict(
+                'os.environ', {'ProgramW6432': r'D:\Apps', 'ProgramFiles': r'D:\Apps',
+                               'ProgramFiles(x86)': r'D:\Apps32'}, clear=True):
             with patch.object(browser_find, '_expand', return_value=[]) as expand:
                 browser_find.search_roots()
         roots = [call.args[0] for call in expand.call_args_list]
         self.assertIn(str(pathlib.Path(r'D:\Apps') / r'Supermium'), roots)
+
+    def test_linux_uses_path_and_prefers_chromium(self):
+        commands = {'chromium': '/usr/bin/chromium',
+                    'google-chrome': '/opt/google/chrome/google-chrome'}
+        with patch.object(browser_find.sys, 'platform', 'linux'), patch.object(
+                browser_find.shutil, 'which', side_effect=commands.get) as which:
+            self.assertEqual(browser_find.find_browser(), '/usr/bin/chromium')
+        self.assertEqual(which.call_args_list[0].args, ('chromium',))
+
+    def test_linux_missing_browser_has_platform_specific_hint(self):
+        with patch.object(browser_find.sys, 'platform', 'linux'), patch.object(
+                browser_find.shutil, 'which', return_value=None):
+            with self.assertRaisesRegex(FileNotFoundError, 'PATH'):
+                browser_find.find_browser()

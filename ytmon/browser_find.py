@@ -10,6 +10,7 @@ from __future__ import annotations
 import glob
 import os
 import pathlib
+import shutil
 import sys
 
 # (安装根目录, 可执行文件名)。Chromium 系各家布局都是 <root>\<版本>\<exe>，
@@ -50,6 +51,12 @@ LOCAL_SUBDIRS: list[tuple[str, str]] = [
     (r"Supermium\Application", "chrome.exe"),
 ]
 
+# Linux 发行版通常通过 PATH 提供浏览器；优先使用已在 AOSC 验证的 Chromium。
+LINUX_COMMANDS = (
+    "chromium", "chromium-browser", "google-chrome-stable", "google-chrome",
+    "microsoft-edge-stable", "microsoft-edge",
+)
+
 BROWSER_NOTE = (
     "Win7 上 Edge 最高只能到 109（已 EOL）。建议改用 Supermium：\n"
     "        https://github.com/win32ss/supermium/releases\n"
@@ -87,6 +94,11 @@ def _expand(root: str, exe: str) -> list[str]:
 
 def search_roots() -> list[str]:
     """按优先级返回找到的候选（已排重、只留真实文件）。"""
+    if sys.platform.startswith('linux'):
+        found = [path for command in LINUX_COMMANDS
+                 if (path := shutil.which(command)) is not None]
+        return list(dict.fromkeys(found))
+
     found: list[str] = []
     for root, exe in CANDIDATES:
         # 系统盘和安装目录可以不是 C:；64 位系统兼顾两个 Program Files。
@@ -132,9 +144,9 @@ def browser_brand(path: str) -> str:
     parts = path.replace('\\', '/').lower().split('/')
     if 'supermium' in parts or parts[-1] == 'supermium.exe':
         return 'Supermium'
-    if parts[-1] == 'msedge.exe':
+    if parts[-1] in ('msedge.exe', 'microsoft-edge', 'microsoft-edge-stable'):
         return 'Edge'
-    return 'Chrome' if 'google' in parts else 'Chromium'
+    return 'Chrome' if 'google' in parts or parts[-1].startswith('google-chrome') else 'Chromium'
 
 
 def select_browser(found: list[str], windows7: bool) -> str:
@@ -161,11 +173,16 @@ def find_browser(explicit: str | None = None) -> str:
 
     found = search_roots()
     if not found:
+        if sys.platform.startswith('linux'):
+            raise FileNotFoundError(
+                '未在 PATH 中找到 Chromium 系浏览器。请安装 Chromium，'
+                '或在监听设置中填写浏览器可执行文件的完整路径。'
+            )
         raise FileNotFoundError(
             "未找到任何 Chromium 系浏览器（Edge / Chrome / Chromium / Supermium）。\n"
             f"        {BROWSER_NOTE}"
         )
-    return select_browser(found, is_windows7())
+    return found[0] if sys.platform.startswith('linux') else select_browser(found, is_windows7())
 
 
 def probe_browser(path: str, timeout: float = 40.0) -> tuple[str, str]:

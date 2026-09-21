@@ -105,7 +105,7 @@ watchlist.json 可能包含凭证，勿提交或分享。Git 忽略和打包排�
 
 Win7 使用 Python 3.8 和兼容浏览器，依赖见 requirements-win7*.txt。[实机验证指南](docs/Win7-实机验证指南.md) 列出现场检查步骤；本轮静态清理不构成新的实机验证。
 
-Linux/LoongArch GUI 仍处于试验阶段。Linux 启动前会直接选择 PySide6，不导入 PySide2；Windows 仍优先 PySide2，保持 Win7 路线。AOSC 试验机可使用发行版提供的 PySide6、aiohttp、Chromium，并在复用系统包的虚拟环境中安装 `PySide6-Fluent-Widgets`。不要在同一环境安装两种绑定版本的 Fluent Widgets。Qt/Fluent 离屏窗口已单独验证；本程序的完整页面、托盘、浏览器引导与 Linux 打包尚未验收。
+Linux/LoongArch GUI 仍处于试验阶段。Linux 启动前会直接选择 PySide6，不导入 PySide2；Windows 仍优先 PySide2，保持 Win7 路线。AOSC 试验机可使用发行版提供的 PySide6、aiohttp、Chromium，并在复用系统包的虚拟环境中安装 `PySide6-Fluent-Widgets`。不要在同一环境安装两种绑定版本的 Fluent Widgets。Linux 留空浏览器路径时会从 `PATH` 自动查找 Chromium 系浏览器，优先 `chromium`；也可手动填写可执行文件完整路径。AOSC 实机已验证开窗、页面切换和手动指定 `/usr/bin/chromium` 后的船期查询；自动发现、托盘与 Linux 打包尚未实机验收。
 
 tools/make_bundle.py 生成源码交付包，tools/build_gui.py 和 tools/build_release.py 用于构建程序。
 
