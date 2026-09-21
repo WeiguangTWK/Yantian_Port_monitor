@@ -56,7 +56,7 @@ from gui.consent_dialog import ask_site_terms                     # noqa: E402
 from gui.tray_icon import TrayIconTheme                           # noqa: E402
 from gui.notification_transport import dispatch_windows           # noqa: E402
 from gui.persistent_notifications import PersistentNotifications   # noqa: E402
-from gui.monitor_runtime import Countdown, row_status             # noqa: E402
+from gui.monitor_runtime import (Countdown, ManualCheckCooldown, row_status)  # noqa: E402
 from ytmon.notify import Notifier                                 # noqa: E402
 from ytmon.store import target_key                                # noqa: E402
 from ytmon.fatal import (format_exception, report_fatal,           # noqa: E402
@@ -160,6 +160,7 @@ class MonitorPage(QWidget):
         self.notification_busy = False
         self.monitoring = False
         self.countdown = Countdown()
+        self.manual_cooldown = ManualCheckCooldown()
         self.target_states = {}
         self.last_checked = {}
         self.latest_outcomes = {}
@@ -182,7 +183,7 @@ class MonitorPage(QWidget):
         bar.addStretch(1)
         root.addLayout(bar)
 
-        self.btn_run.clicked.connect(self._start)
+        self.btn_run.clicked.connect(self._start_manual)
 
         self.progress = ProgressBar(self)
         self.progress.setMaximum(1000)
@@ -243,6 +244,11 @@ class MonitorPage(QWidget):
         self.table.resizeColumnsToContents()
 
     # ---------------------------------------------------------- 运行
+
+    def _start_manual(self) -> None:
+        if not self.manual_cooldown.ready:
+            return
+        self._start()
 
     def _start(self) -> None:
         if self.querying:
@@ -368,7 +374,7 @@ class MonitorPage(QWidget):
         if worker is not None:
             worker.deleteLater()
         self.querying = False
-        self.btn_run.setEnabled(True)
+        self.manual_cooldown.start()
         self.busy_changed.emit(False)
         if self.monitoring:
             self._schedule_next()
@@ -424,6 +430,9 @@ class MonitorPage(QWidget):
                 self._schedule_next()
 
     def _tick(self):
+        remaining = math.ceil(self.manual_cooldown.remaining)
+        self.btn_run.setText(f'立即检查（{remaining}s）' if remaining else '立即检查')
+        self.btn_run.setEnabled(not self.querying and not self.notification_busy and not remaining)
         if self.querying:
             self.progress.setValue(0)
             self.countdown_text.setText('正在查询；完成后继续监听' if self.monitoring else '正在查询；自动监听已停止')
@@ -445,7 +454,6 @@ class MonitorPage(QWidget):
 
     def set_notification_busy(self, busy):
         self.notification_busy = busy
-        self.btn_run.setEnabled(not busy and not self.querying)
         self._tick()
 
     # ---------------------------------------------------------- 小工具

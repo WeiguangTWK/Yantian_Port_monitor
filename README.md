@@ -87,6 +87,8 @@ python run_monitor.py --dump-html snapshots
 python tools/env_check.py --browser C:\Supermium\supermium.exe
 ```
 
+GUI 与 CLI 的循环监听间隔均至少为 60 秒；GUI 的“立即检查”在每轮查询结束（包括失败）后冷却 10 秒，期间按钮不可点击。额外随机等待在基础监听间隔之上。
+
 --test-alert 会真实发送通知；env_check 会启动浏览器并访问站点。--dump-html 仅保存首分页 HTML。--show-browser 显示 Cookie 引导窗口，--verbose 显示调试日志。
 退出码：0 无变更、10 有变更、1 配置或通道错误、3 查询失败。
 

@@ -8,7 +8,7 @@ import unittest
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from gui.monitor_runtime import Countdown, row_status
+from gui.monitor_runtime import Countdown, ManualCheckCooldown, row_status
 
 
 class TestCountdown(unittest.TestCase):
@@ -32,14 +32,14 @@ class TestCountdown(unittest.TestCase):
         self.assertEqual(self.countdown.remaining, 630)
 
     def test_elapsed_deadline_is_due_without_negative_progress(self):
-        self.countdown.reset(5)
+        self.countdown.reset(60)
         self.now += 100
         self.assertTrue(self.countdown.due)
         self.assertEqual(self.countdown.remaining, 0)
         self.assertEqual(self.countdown.bar_value, 0)
 
     def test_stop_removes_deadline(self):
-        self.countdown.reset(5)
+        self.countdown.reset(60)
         self.countdown.clear()
         self.now += 10
         self.assertFalse(self.countdown.due)
@@ -51,11 +51,28 @@ class TestCountdown(unittest.TestCase):
         self.assertEqual(self.countdown.remaining, 1800)
 
     def test_invalid_intervals_are_rejected(self):
-        for interval, jitter in [(0, 0), (4, 0), (600, -1), (True, 0),
+        for interval, jitter in [(0, 0), (5, 0), (59, 0), (600, -1), (True, 0),
                                  (float('nan'), 0), (600, float('inf'))]:
             with self.subTest(interval=interval, jitter=jitter):
                 with self.assertRaises(ValueError):
                     self.countdown.reset(interval, jitter)
+
+    def test_minimum_interval_is_accepted(self):
+        self.countdown.reset(60)
+        self.assertEqual(self.countdown.remaining, 60)
+
+
+class TestManualCheckCooldown(unittest.TestCase):
+    def test_starts_after_completion_and_expires_after_ten_seconds(self):
+        now = [100.0]
+        cooldown = ManualCheckCooldown(clock=lambda: now[0])
+        self.assertTrue(cooldown.ready)
+        cooldown.start()
+        self.assertEqual(cooldown.remaining, 10)
+        now[0] += 9.9
+        self.assertFalse(cooldown.ready)
+        now[0] += 0.1
+        self.assertTrue(cooldown.ready)
 
 
 class TestRowStatus(unittest.TestCase):

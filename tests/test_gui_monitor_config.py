@@ -54,7 +54,8 @@ class TestMonitorConfig(unittest.TestCase):
 
     def test_invalid_values_do_not_write(self):
         store = MonitorConfig(self.path)
-        for key, value in [('watch_interval_seconds', 0), ('watch_interval_seconds', 5.5),
+        for key, value in [('watch_interval_seconds', 0), ('watch_interval_seconds', 59),
+                           ('watch_interval_seconds', 5.5),
                            ('max_pages', 0), ('retry_attempts', -1),
                            ('watch_jitter_seconds', float('nan')),
                            ('headless', 'true'), ('close_to_tray', 'true'), ('edge_path', 123)]:

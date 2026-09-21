@@ -15,6 +15,7 @@ from dataclasses import asdict, dataclass, field, fields
 
 VALID_TYPES = ("ship", "voyage")
 DEFAULT_CONFIG_PATH = "watchlist.json"
+MIN_WATCH_INTERVAL_SECONDS = 60
 
 # windows 使用系统托盘；linux 使用桌面通知服务的 notify-send。
 VALID_CHANNELS = ("webhook", "dingtalk", "wecom", "feishu", "email", "windows", "linux")
@@ -130,6 +131,8 @@ class Settings:
             errs.append("retry_backoff_seconds 不能为负")
         if self.watch_jitter_seconds < 0:
             errs.append("watch_jitter_seconds 不能为负")
+        if self.watch_interval_seconds < MIN_WATCH_INTERVAL_SECONDS:
+            errs.append("监听间隔不能低于 60 秒")
         if self.heartbeat_hours < 0 or self.stale_after_hours < 0:
             errs.append("heartbeat_hours / stale_after_hours 不能为负")
         if self.heartbeat_url and not self.heartbeat_url.startswith(("http://", "https://")):

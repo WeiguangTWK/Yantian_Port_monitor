@@ -145,6 +145,14 @@ class TestTestAlertCommand(unittest.TestCase):
 
 class TestParserContract(unittest.TestCase):
 
+    def test_short_watch_interval_is_rejected_before_config_load(self):
+        from unittest.mock import patch
+        from ytmon.cli import main
+        with patch('ytmon.cli.AppConfig.load') as load, contextlib.redirect_stderr(io.StringIO()) as error:
+            self.assertEqual(main(['--watch', '59']), 1)
+        load.assert_not_called()
+        self.assertIn('60 秒', error.getvalue())
+
     def test_new_flags_are_accepted(self):
         for flag in ("--test-alert", "--no-notify", "--verbose", "--quiet"):
             with self.subTest(flag):

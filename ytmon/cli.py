@@ -8,7 +8,7 @@ import random
 import sys
 import time
 
-from .config import DEFAULT_CONFIG_PATH, AppConfig
+from .config import DEFAULT_CONFIG_PATH, MIN_WATCH_INTERVAL_SECONDS, AppConfig
 from .matching import MATCH_FUZZY
 from .notify import Notifier, describe, test_message
 from .service import (STATUS_CHANGED, STATUS_ERROR, STATUS_FIRST,
@@ -179,7 +179,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--config", default=DEFAULT_CONFIG_PATH)
     p.add_argument("--etb-time", default=None, help="查询起始日 YYYYMMDD（默认 今天-N 天）")
     p.add_argument("--watch", type=int, default=0, metavar="秒",
-                   help="循环监控，每 N 秒一轮；不填只跑一轮")
+                   help="循环监控，每 N 秒一轮（至少 60 秒）；不填只跑一轮")
     p.add_argument("--quiet", action="store_true", help="只输出变更与异常")
     p.add_argument("--verbose", action="store_true",
                    help="显示调试信息")
@@ -208,6 +208,9 @@ def main(argv: list[str] | None = None) -> int:
         print(warn, file=sys.stderr)
 
     args = build_parser().parse_args(argv)
+    if 0 < args.watch < MIN_WATCH_INTERVAL_SECONDS:
+        print("--watch 监听间隔不能低于 60 秒。", file=sys.stderr)
+        return EXIT_ERROR
     try:
         cfg = AppConfig.load(args.config)
     except FileNotFoundError as e:

@@ -5,12 +5,12 @@ from __future__ import annotations
 import math
 
 from gui.target_config import TargetConfig
-from ytmon.config import Settings
+from ytmon.config import MIN_WATCH_INTERVAL_SECONDS, Settings
 
 
 # 字段 -> (下限, 上限, 是否整数)
 NUMERIC_FIELDS = {
-    'watch_interval_seconds': (5, 2147483647, True),
+    'watch_interval_seconds': (MIN_WATCH_INTERVAL_SECONDS, 2147483647, True),
     'watch_jitter_seconds': (0, 86400, False),
     'etb_back_days': (0, 3650, True),
     'max_pages': (1, 10000, True),
