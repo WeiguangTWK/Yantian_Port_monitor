@@ -406,13 +406,21 @@ def main() -> int:
     ap.add_argument("--config", default="watchlist.json")
     args = ap.parse_args()
 
+    # 自检会访问站点、引导 Cookie 并实际 POST；未确认时不能把它当作离线检查。
+    try:
+        from ytmon.config import AppConfig
+        cfg = AppConfig.load(args.config)
+    except (FileNotFoundError, ValueError) as error:
+        print(f"无法读取配置：{error}。请先启动 GUI 完成站点条款确认。", file=sys.stderr)
+        return 1
+    if cfg.settings.site_terms_accepted is not True:
+        print("环境自检会访问易物流盐田；请先启动 GUI 阅读服务协议并完成确认。"
+              "本次未访问站点。", file=sys.stderr)
+        return 1
+
     browser_path = args.browser
     if not browser_path:
-        try:
-            from ytmon.config import AppConfig
-            browser_path = AppConfig.load(args.config).settings.edge_path
-        except (FileNotFoundError, ValueError):
-            pass
+        browser_path = cfg.settings.edge_path
 
     print("=" * 70)
     print(f"  盐田船期监控 · 环境自检   {dt.datetime.now():%Y-%m-%d %H:%M:%S}")

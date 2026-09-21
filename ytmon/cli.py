@@ -234,6 +234,11 @@ def main(argv: list[str] | None = None) -> int:
             emit("")
         return run_test_alert(cfg, args)
 
+    if cfg.settings.site_terms_accepted is not True:
+        print("使用易物流盐田查询前，请先启动 GUI 阅读服务协议并完成确认。"
+              "当前配置尚未记录同意状态；本次未访问站点。", file=sys.stderr)
+        return EXIT_ERROR
+
     errs = cfg.validate()
     if errs:
         print("[配置有问题]", file=sys.stderr)

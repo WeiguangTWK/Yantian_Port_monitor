@@ -58,6 +58,8 @@ class Settings:
     edge_path: str | None = None
     headless: bool = True
     close_to_tray: bool = False             # GUI 关闭窗口后驻留托盘
+    site_terms_accepted: bool = False       # 用户确认已阅读站点条款；不是运营方授权
+    site_terms_accepted_at: str = ""         # 本地确认时间，仅供提示与核对
     cookie_cache: str = ".cache/cookies.json"
     watch_interval_seconds: int = 600        # 循环监控间隔，GUI 用
 
@@ -104,6 +106,10 @@ class Settings:
         # 那是"配置完整性"问题，统一由 AppConfig.validate_unknown_keys() 负责。
         # 两边都报会得到两条一模一样的错误（真出现过）。
         errs = []
+        if not isinstance(self.site_terms_accepted, bool):
+            errs.append("site_terms_accepted 必须为布尔值")
+        if not isinstance(self.site_terms_accepted_at, str):
+            errs.append("site_terms_accepted_at 必须为字符串")
         if not isinstance(self.close_to_tray, bool):
             errs.append("close_to_tray 必须为布尔值")
         if self.etb_back_days < 0:

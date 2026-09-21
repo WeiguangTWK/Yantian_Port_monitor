@@ -51,6 +51,8 @@ from targets import TargetsPage                                   # noqa: E402
 from monitor_settings import MonitorSettingsPage                  # noqa: E402
 from notifications import NotificationsPage                       # noqa: E402
 from about import AboutPage                                       # noqa: E402
+from gui.consent_config import record_site_terms_acceptance       # noqa: E402
+from gui.consent_dialog import ask_site_terms                     # noqa: E402
 from gui.tray_icon import TrayIconTheme                           # noqa: E402
 from gui.notification_transport import dispatch_windows           # noqa: E402
 from gui.persistent_notifications import PersistentNotifications   # noqa: E402
@@ -614,6 +616,12 @@ def main() -> int:
         cfg = AppConfig(path=pathlib.Path(CONFIG_PATH))
 
     app = QApplication(sys.argv)
+    app.setQuitOnLastWindowClosed(False)
+    if cfg.settings.site_terms_accepted is not True:
+        if not ask_site_terms():
+            return 0
+        record_site_terms_acceptance(CONFIG_PATH)
+        cfg = AppConfig.load(CONFIG_PATH)
     win = MainWindow(cfg)
     win.show()
     return exec_app(app)
