@@ -34,7 +34,7 @@ try:
                                 PushButton, SubtitleLabel, TextEdit)
 except ImportError as e:                                      # pragma: no cover
     print(f"界面组件加载失败：{e}\n"
-          "源码运行请检查 requirements-win7-gui.txt；"
+          "源码运行请检查对应平台的 Fluent Widgets 依赖；"
           "冻结程序请检查组件是否完整。", file=sys.stderr)
     raise SystemExit(2)
 
